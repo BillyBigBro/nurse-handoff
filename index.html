@@ -1,0 +1,1269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="A daily nursing case puzzle: read the chart, name what's happening to the patient in six calls, then pick the nurse's first move.">
+<title>Handoff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap">
+<style>
+/* Layout: one nursing-flowsheet column — wristband header, timed chart entries, a sticky "make the call" dock at the bottom, result card after. */
+:root{
+  --paper:#EDF1F5; --sheet:#FFFFFF; --ink:#14223A; --muted:#5A6980; --rule:#D3DCE6; --rule-soft:#E6EBF1;
+  --pen:#2343B0; --pen-soft:#E2E8FA; --hl:#FFE466;
+  --ok:#14794A; --ok-soft:#DAF0E3; --close:#A86200; --close-soft:#FBE8C8; --sys:#2F68AD; --sys-soft:#DFE9F6; --miss:#6F7988; --miss-soft:#E9EDF2;
+  --allergy:#C42F28; --fall:#E2AE00; --fall-ink:#3D2E00; --dnr:#6A3DB3; --on-color:#FFFFFF;
+  --hatch:rgba(20,34,58,.06);
+  --shadow:0 1px 0 rgba(20,34,58,.04), 0 10px 28px -14px rgba(20,34,58,.22);
+  --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --f-body:"Public Sans","Segoe UI",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0E151E; --sheet:#151F2B; --ink:#E4EBF4; --muted:#93A2B5; --rule:#2A3747; --rule-soft:#202C3A;
+    --pen:#93AAFF; --pen-soft:#1F2A4A; --hl:rgba(255,215,64,.30);
+    --ok:#4FCB8A; --ok-soft:#163626; --close:#F2AE48; --close-soft:#3A2A10; --sys:#7FB0F0; --sys-soft:#17283E; --miss:#8A95A6; --miss-soft:#1F2833;
+    --allergy:#E8574F; --fall:#E7B829; --fall-ink:#2A1F00; --dnr:#9C78E0; --on-color:#FFFFFF;
+    --hatch:rgba(228,235,244,.05);
+    --shadow:0 1px 0 rgba(0,0,0,.2), 0 12px 30px -14px rgba(0,0,0,.6);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0E151E; --sheet:#151F2B; --ink:#E4EBF4; --muted:#93A2B5; --rule:#2A3747; --rule-soft:#202C3A;
+  --pen:#93AAFF; --pen-soft:#1F2A4A; --hl:rgba(255,215,64,.30);
+  --ok:#4FCB8A; --ok-soft:#163626; --close:#F2AE48; --close-soft:#3A2A10; --sys:#7FB0F0; --sys-soft:#17283E; --miss:#8A95A6; --miss-soft:#1F2833;
+  --allergy:#E8574F; --fall:#E7B829; --fall-ink:#2A1F00; --dnr:#9C78E0; --on-color:#FFFFFF;
+  --hatch:rgba(228,235,244,.05);
+  --shadow:0 1px 0 rgba(0,0,0,.2), 0 12px 30px -14px rgba(0,0,0,.6);
+  color-scheme:dark;
+}
+
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+[hidden]{display:none!important}
+img{max-width:100%}
+*{box-sizing:border-box}
+html,body{background:var(--paper)}
+body{margin:0}
+body{color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--pen);outline-offset:2px;border-radius:4px}
+
+.app{max-width:760px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 0;display:flex;flex-direction:column;gap:16px}
+
+/* Header */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;min-width:0}
+.mark{font-family:var(--f-display);font-weight:800;font-size:2rem;letter-spacing:-.03em;line-height:1;font-variation-settings:"opsz" 96}
+.mark i{font-style:normal;color:var(--pen)}
+.eyebrow{font-family:var(--f-mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tools{display:flex;align-items:center;gap:8px}
+.seg{display:flex;border:1px solid var(--rule);border-radius:999px;padding:3px;background:var(--sheet)}
+.seg button{border:0;background:transparent;padding:6px 14px;border-radius:999px;font-weight:600;font-size:.86rem;color:var(--muted);cursor:pointer}
+.seg button[aria-selected="true"]{background:var(--ink);color:var(--paper)}
+.icon-btn{width:36px;height:36px;border-radius:50%;border:1px solid var(--rule);background:var(--sheet);display:grid;place-items:center;cursor:pointer;font-weight:700}
+.icon-btn:hover,.seg button:hover{color:var(--ink)}
+.icon-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+
+/* Wristband */
+.band{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px}
+.strap{flex:1 1 360px;min-width:0;display:flex;align-items:center;gap:14px;background:var(--sheet);border:1px solid var(--rule);border-radius:999px;padding:8px 20px 8px 10px;box-shadow:var(--shadow)}
+.snap{flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--rule);background:var(--paper)}
+.barcode{flex:none;width:44px;height:26px;background:repeating-linear-gradient(90deg,var(--ink) 0 2px,transparent 2px 3px,var(--ink) 3px 4px,transparent 4px 7px,var(--ink) 7px 10px,transparent 10px 11px);opacity:.75;border-radius:2px}
+.who{min-width:0;display:flex;flex-direction:column;line-height:1.25}
+.who b{font-family:var(--f-display);font-weight:700;font-size:1.12rem;letter-spacing:-.01em}
+.who span{font-family:var(--f-mono);font-size:.76rem;color:var(--muted);overflow-wrap:anywhere}
+.alerts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.alert{font-family:var(--f-mono);font-size:.7rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:6px 12px;border-radius:999px;white-space:nowrap}
+.alert.allergy{background:var(--allergy);color:var(--on-color)}
+.alert.fall{background:var(--fall);color:var(--fall-ink)}
+.alert.dnr{background:var(--dnr);color:var(--on-color)}
+.alert.nkda{border:1px solid var(--rule);color:var(--muted);background:var(--sheet)}
+
+.brief{margin:0;font-size:1.02rem;max-width:62ch;text-wrap:pretty}
+.brief b{font-weight:700}
+
+/* Chart sheet */
+.sheet{background:var(--sheet);border:1px solid var(--rule);border-radius:14px;box-shadow:var(--shadow);overflow:hidden}
+.sheet-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 16px;border-bottom:2px solid var(--ink)}
+.sheet-head .eyebrow:first-child{color:var(--ink);font-weight:600}
+.chart{list-style:none;margin:0;padding:0}
+.row{display:grid;grid-template-columns:5.2rem minmax(0,1fr);gap:14px;padding:11px 16px;border-bottom:1px solid var(--rule-soft);align-items:start}
+.row:last-child{border-bottom:0}
+.meta{display:flex;flex-direction:column;gap:3px;padding-top:2px}
+.time{font-family:var(--f-mono);font-size:.8rem;font-weight:500;font-variant-numeric:tabular-nums}
+.tag{font-family:var(--f-mono);font-size:.64rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.txt{min-width:0;overflow-wrap:anywhere;text-wrap:pretty}
+.txt mark{background:transparent;color:inherit}
+.row.fresh .txt span{background-image:linear-gradient(var(--hl),var(--hl));background-repeat:no-repeat;background-size:100% 100%;animation:swipe .7s ease-out both;box-decoration-break:clone;-webkit-box-decoration-break:clone;padding:0 2px;margin:0 -2px}
+@keyframes swipe{from{background-size:0% 100%}to{background-size:100% 100%}}
+.row.locked{background-image:repeating-linear-gradient(-45deg,var(--hatch) 0 6px,transparent 6px 12px)}
+.row.locked .time,.row.locked .txt{color:var(--muted)}
+.row.locked .txt{font-size:.86rem;font-style:italic}
+.row.after .txt,.row.after .time{color:var(--muted)}
+.row.after .tag::after{content:" · unrevealed"}
+.row.call{background:var(--paper)}
+.row.call .time{color:var(--pen);font-weight:600}
+.call-line{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px}
+.call-name{font-family:var(--f-display);font-weight:700;font-size:1.02rem}
+.row.call.v-ok .call-name{color:var(--ok)}
+.row.call.v-skip .call-name{color:var(--muted);font-weight:500;font-style:italic;font-family:var(--f-body);font-size:.92rem}
+.chip{font-family:var(--f-mono);font-size:.66rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:6px;white-space:nowrap}
+.chip.ok{background:var(--ok-soft);color:var(--ok)}
+.chip.close{background:var(--close-soft);color:var(--close)}
+.chip.sys{background:var(--sys-soft);color:var(--sys)}
+.chip.miss,.chip.skip{background:var(--miss-soft);color:var(--miss)}
+.divider{padding:8px 16px;font-family:var(--f-mono);font-size:.66rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:var(--paper);border-bottom:1px solid var(--rule-soft)}
+
+/* Dock */
+.dock{position:sticky;bottom:0;z-index:5;margin-inline:calc(-1 * max(16px,env(safe-area-inset-left,0px)));padding:12px max(16px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));background:linear-gradient(to bottom,transparent,var(--paper) 18px)}
+.dock-inner{background:var(--sheet);border:1px solid var(--rule);border-radius:16px;box-shadow:var(--shadow);padding:12px;display:flex;flex-direction:column;gap:10px}
+.dock-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.pips{display:flex;gap:5px}
+.pip{width:22px;height:8px;border-radius:3px;background:var(--rule)}
+.pip.ok{background:var(--ok)}.pip.close{background:var(--close)}.pip.sys{background:var(--sys)}.pip.miss,.pip.skip{background:var(--miss)}
+.pip.next{background:transparent;box-shadow:inset 0 0 0 1.5px var(--pen)}
+.entry{display:flex;gap:8px;position:relative}
+.combo{flex:1;min-width:0;position:relative}
+.combo input{width:100%;height:46px;border:1.5px solid var(--rule);border-radius:10px;padding:0 14px;font:inherit;font-size:1rem;background:var(--paper);color:var(--ink)}
+.combo input::placeholder{color:var(--muted)}
+.combo input:focus{outline:none;border-color:var(--pen);box-shadow:0 0 0 3px var(--pen-soft)}
+.suggest{position:absolute;left:0;right:0;bottom:calc(100% + 6px);margin:0;padding:6px;list-style:none;background:var(--sheet);border:1px solid var(--rule);border-radius:12px;box-shadow:var(--shadow);max-height:300px;overflow-y:auto}
+.suggest li{display:flex;justify-content:space-between;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer}
+.suggest li .sys-name{font-family:var(--f-mono);font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);white-space:nowrap;align-self:center}
+.suggest li[aria-selected="true"]{background:var(--pen-soft)}
+.suggest li.used{opacity:.45;cursor:not-allowed;text-decoration:line-through}
+.suggest li.none{color:var(--muted);cursor:default;font-size:.9rem}
+.btn{height:46px;padding:0 18px;border-radius:10px;border:0;font-weight:700;cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--pen);color:var(--sheet)}
+.btn.primary:disabled{opacity:.4;cursor:not-allowed}
+.btn.ghost{background:transparent;border:1.5px solid var(--rule);color:var(--ink)}
+.btn.ghost:hover{border-color:var(--ink)}
+.linkish{background:none;border:0;padding:0;font-size:.84rem;color:var(--muted);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.linkish:hover{color:var(--ink)}
+.hint{font-size:.82rem;color:var(--muted)}
+
+/* Result */
+.result{display:flex;flex-direction:column;gap:14px;padding-bottom:8px}
+.card{background:var(--sheet);border:1px solid var(--rule);border-radius:14px;padding:18px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px}
+.answer{margin:0;font-family:var(--f-display);font-weight:800;font-size:clamp(1.6rem,5vw,2.2rem);letter-spacing:-.025em;line-height:1.05;text-wrap:balance}
+.card.won .answer{color:var(--ok)}
+.sum{margin:0;max-width:64ch;text-wrap:pretty}
+.q{margin:0;font-family:var(--f-display);font-weight:700;font-size:1.18rem;line-height:1.25;text-wrap:balance}
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;align-items:start;text-align:left;padding:11px 12px;border-radius:10px;border:1.5px solid var(--rule);background:var(--paper);cursor:pointer;line-height:1.4}
+.opt:hover:not(:disabled){border-color:var(--pen)}
+.opt .k{font-family:var(--f-mono);font-weight:600;font-size:.8rem;width:24px;height:24px;border-radius:6px;display:grid;place-items:center;background:var(--sheet);border:1px solid var(--rule)}
+.opt:disabled{cursor:default}
+.opt.right{border-color:var(--ok);background:var(--ok-soft)}
+.opt.right .k{background:var(--ok);color:var(--sheet);border-color:var(--ok)}
+.opt.wrong{border-color:var(--allergy)}
+.opt.wrong .k{background:var(--allergy);color:var(--on-color);border-color:var(--allergy)}
+.opt.dim{opacity:.55}
+.rationale{border-top:1px dashed var(--rule);padding-top:10px;margin:0;text-wrap:pretty}
+.rationale b{color:var(--ok)}
+.rationale.miss b{color:var(--allergy)}
+.pearls ul{margin:0;padding-left:1.1rem;display:flex;flex-direction:column;gap:6px}
+.pearls li{text-wrap:pretty}
+.actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.countdown{font-family:var(--f-mono);font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.copied{font-size:.84rem;color:var(--ok);font-weight:600}
+.share-fallback{width:100%;min-height:96px;font-family:var(--f-mono);font-size:.82rem;border:1px solid var(--rule);border-radius:8px;padding:8px;background:var(--paper);color:var(--ink)}
+
+.foot{font-size:.78rem;color:var(--muted);padding-block:8px 24px;max-width:64ch}
+
+/* Modals */
+.overlay{position:fixed;inset:0;z-index:20;background:rgba(10,16,26,.5);display:grid;place-items:center;padding:16px max(16px,env(safe-area-inset-right,0px)) 16px max(16px,env(safe-area-inset-left,0px))}
+.modal{width:min(520px,100%);max-height:calc(100% - 32px);overflow-y:auto;background:var(--sheet);border-radius:16px;border:1px solid var(--rule);box-shadow:var(--shadow);padding:22px;display:flex;flex-direction:column;gap:14px}
+.modal h2{margin:0;font-family:var(--f-display);font-weight:800;font-size:1.5rem;letter-spacing:-.02em}
+.modal-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.modal p{margin:0}
+.modal ol{margin:0;padding-left:1.2rem;display:flex;flex-direction:column;gap:6px}
+.legend{display:grid;grid-template-columns:auto 1fr;gap:8px 10px;align-items:center;font-size:.9rem}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center}
+.stat-grid b{display:block;font-family:var(--f-display);font-weight:800;font-size:1.7rem;font-variant-numeric:tabular-nums;line-height:1.1}
+.stat-grid span{font-size:.72rem;color:var(--muted)}
+.dist{display:flex;flex-direction:column;gap:5px}
+.dist-row{display:grid;grid-template-columns:1.4rem minmax(0,1fr);gap:8px;align-items:center;font-family:var(--f-mono);font-size:.8rem;font-variant-numeric:tabular-nums}
+.dist-bar{height:20px;border-radius:4px;background:var(--miss-soft);color:var(--ink);display:flex;align-items:center;justify-content:flex-end;padding:0 6px;min-width:24px}
+.dist-bar.hot{background:var(--pen);color:var(--sheet)}
+
+@media (max-width:520px){
+  .mark{font-size:1.7rem}
+  .row{grid-template-columns:4.3rem minmax(0,1fr);gap:10px;padding:10px 12px}
+  .btn{padding:0 14px}
+  .stat-grid b{font-size:1.4rem}
+  .strap{border-radius:18px}
+}
+@media (prefers-reduced-motion:reduce){.row.fresh .txt span{animation:none}}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <span class="mark">Hand<i>off</i></span>
+      <span class="eyebrow" id="caseLabel">Case #1 · Today</span>
+    </div>
+    <nav class="tools">
+      <div class="seg" role="tablist" aria-label="Game mode">
+        <button id="modeDaily" role="tab" aria-selected="true">Today</button>
+        <button id="modePractice" role="tab" aria-selected="false">Practice</button>
+      </div>
+      <button class="icon-btn" id="helpBtn" aria-label="How to play">?</button>
+      <button class="icon-btn" id="statsBtn" aria-label="Your stats"><svg viewBox="0 0 24 24"><path d="M5 20V12M12 20V5M19 20v-9"/></svg></button>
+    </nav>
+  </header>
+
+  <section class="band" id="band" aria-label="Patient wristband"></section>
+
+  <p class="brief" id="brief">You’re taking report on this patient. <b>What is happening to them?</b> Six chart entries are open. Each wrong call opens one more.</p>
+
+  <section class="sheet" aria-label="Chart">
+    <div class="sheet-head"><span class="eyebrow" id="sheetTitle">Nursing notes</span><span class="eyebrow" id="sheetCount"></span></div>
+    <ol class="chart" id="chart"></ol>
+  </section>
+
+  <div class="dock" id="dock">
+    <div class="dock-inner">
+      <div class="dock-top">
+        <span class="eyebrow" id="callCount">Call 1 of 6</span>
+        <div class="pips" id="pips" aria-hidden="true"></div>
+      </div>
+      <form class="entry" id="guessForm" autocomplete="off">
+        <div class="combo">
+          <input id="guessInput" type="text" placeholder="What’s going on with this patient?" role="combobox" aria-expanded="false" aria-controls="suggest" aria-autocomplete="list" aria-label="Your call">
+          <ul class="suggest" id="suggest" role="listbox" hidden></ul>
+        </div>
+        <button class="btn primary" id="callBtn" type="submit" disabled>Call it</button>
+      </form>
+      <div class="dock-top">
+        <span class="hint" id="dockHint">Start typing, then pick from the list.</span>
+        <button class="linkish" id="skipBtn" type="button">Skip and open next entry</button>
+      </div>
+    </div>
+  </div>
+
+  <section class="result" id="result" hidden>
+    <div class="card" id="verdictCard">
+      <span class="eyebrow" id="verdictEyebrow"></span>
+      <h2 class="answer" id="answerName"></h2>
+      <p class="sum" id="answerSum"></p>
+    </div>
+    <div class="card" id="prioCard">
+      <span class="eyebrow">Round two · Your first move</span>
+      <p class="q" id="prioQ"></p>
+      <div class="opts" id="prioOpts"></div>
+      <p class="rationale" id="prioWhy" hidden></p>
+    </div>
+    <div class="card pearls" id="pearlsCard" hidden>
+      <span class="eyebrow">Chart pearls</span>
+      <ul id="pearls"></ul>
+    </div>
+    <div class="actions" id="actions">
+      <button class="btn primary" id="shareBtn" type="button">Copy result</button>
+      <button class="btn ghost" id="nextBtn" type="button">Next practice case</button>
+      <span class="countdown" id="countdown"></span>
+      <span class="copied" id="copied" hidden>Copied</span>
+    </div>
+    <textarea class="share-fallback" id="shareFallback" readonly hidden aria-label="Result text to copy"></textarea>
+  </section>
+
+  <p class="foot">Practice cases for nursing students and new nurses. The patients are fictional. These cases teach recognition and priorities. They are not clinical guidance, so always follow your facility’s protocols and provider orders.</p>
+</div>
+
+<div class="overlay" id="helpModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <div class="modal-head"><h2 id="helpTitle">How to play</h2><button class="icon-btn" data-close aria-label="Close">✕</button></div>
+    <ol>
+      <li>You’re taking handoff on a patient. Six chart entries are open: vitals, assessment findings, meds given, labs, and what the patient or family tells you.</li>
+      <li>Make your call: name what is happening to the patient. Pick it from the list as you type.</li>
+      <li>Each wrong call opens the next chart entry. You get six calls. You can skip a call to open an entry, but it uses up that call.</li>
+      <li>After the case ends, pick the first thing the nurse should do. Then read why.</li>
+    </ol>
+    <div class="legend">
+      <span class="chip ok">Correct</span><span>That’s what is happening.</span>
+      <span class="chip close">Close</span><span>A closely related problem. You’re on the right track.</span>
+      <span class="chip sys">Same system</span><span>Right body system, wrong problem.</span>
+      <span class="chip miss">Miss</span><span>A different system entirely.</span>
+    </div>
+    <p class="hint">A new case comes out every day at midnight, your local time. Practice mode lets you play as many cases as you like.</p>
+  </div>
+</div>
+
+<div class="overlay" id="statsModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="statsTitle">
+    <div class="modal-head"><h2 id="statsTitle">Your shifts</h2><button class="icon-btn" data-close aria-label="Close">✕</button></div>
+    <div class="stat-grid" id="statGrid"></div>
+    <span class="eyebrow">Calls needed on daily cases</span>
+    <div class="dist" id="dist"></div>
+    <p class="hint" id="prioStat"></p>
+  </div>
+</div>
+
+<script>
+(() => {
+const SYS = {resp:"Respiratory",cardio:"Cardiovascular",endo:"Endocrine",renal:"Renal & electrolytes",neuro:"Neuro",infect:"Infection & immune",gi:"GI & liver",heme:"Blood & transfusion",msk:"Skin, wound & limb",ob:"Obstetric",tox:"Medication & toxicity"};
+
+const DX_RAW = [
+["pneumonia","Pneumonia","resp","chest infection;hap;cap"],
+["pe","Pulmonary embolism","resp","pe;blood clot in lung;embolus"],
+["ptx","Pneumothorax","resp","collapsed lung"],
+["tension-ptx","Tension pneumothorax","resp",""],
+["asthma","Asthma exacerbation","resp","asthma attack;bronchospasm"],
+["copd","COPD exacerbation","resp","emphysema;chronic bronchitis"],
+["ards","ARDS","resp","acute respiratory distress syndrome"],
+["atelectasis","Atelectasis","resp",""],
+["aspiration","Aspiration pneumonia","resp","aspiration"],
+["mi","Acute myocardial infarction","cardio","heart attack;acs;acute coronary syndrome;stemi;nstemi"],
+["angina","Unstable angina","cardio","chest pain"],
+["hf","Heart failure exacerbation","cardio","chf;congestive heart failure;decompensated heart failure"],
+["fvo","Fluid volume overload","cardio","hypervolemia;fluid overload;excess fluid volume"],
+["pulm-edema","Acute pulmonary edema","cardio","flash pulmonary edema"],
+["afib","Atrial fibrillation with RVR","cardio","afib;a-fib;rapid ventricular response"],
+["brady","Symptomatic bradycardia","cardio","heart block"],
+["tamponade","Cardiac tamponade","cardio","pericardial effusion"],
+["hypovolemic","Hypovolemic shock","cardio","hemorrhagic shock;shock;hemorrhage"],
+["cardiogenic","Cardiogenic shock","cardio",""],
+["htn-crisis","Hypertensive crisis","cardio","hypertensive emergency;hypertensive urgency"],
+["dvt","Deep vein thrombosis","cardio","blood clot in leg;vte"],
+["orthostatic","Orthostatic hypotension","cardio","postural hypotension"],
+["hypoglycemia","Hypoglycemia","endo","low blood sugar;low blood glucose;insulin reaction"],
+["dka","Diabetic ketoacidosis","endo","dka;ketoacidosis"],
+["hhs","Hyperosmolar hyperglycemic state","endo","hhs;hhns;hyperglycemia;high blood sugar"],
+["thyroid-storm","Thyroid storm","endo","thyrotoxicosis;hyperthyroidism"],
+["myxedema","Myxedema coma","endo","hypothyroidism"],
+["adrenal","Adrenal crisis","endo","addisonian crisis;adrenal insufficiency"],
+["siadh","SIADH","endo","syndrome of inappropriate antidiuretic hormone"],
+["di","Diabetes insipidus","endo",""],
+["hyperk","Hyperkalemia","renal","high potassium"],
+["hypok","Hypokalemia","renal","low potassium"],
+["hypona","Hyponatremia","renal","low sodium;water intoxication"],
+["hyperna","Hypernatremia","renal","high sodium"],
+["hypoca","Hypocalcemia","renal","low calcium"],
+["hyperca","Hypercalcemia","renal","high calcium"],
+["aki","Acute kidney injury","renal","aki;acute renal failure;kidney failure"],
+["retention","Urinary retention","renal","bladder distension;retention"],
+["dehydration","Dehydration","renal","hypovolemia;fluid volume deficit;deficient fluid volume"],
+["stroke","Stroke","neuro","cva;ischemic stroke;brain attack;tia"],
+["icp","Increased intracranial pressure","neuro","icp;raised icp;brain herniation;head injury;subdural hematoma"],
+["delirium","Delirium","neuro","acute confusion;acute confusional state"],
+["dementia","Dementia","neuro","alzheimer"],
+["etoh","Alcohol withdrawal","neuro","delirium tremens;dts;etoh withdrawal"],
+["seizure","Seizure","neuro","status epilepticus;epilepsy"],
+["ad","Autonomic dysreflexia","neuro","autonomic hyperreflexia"],
+["gbs","Guillain-Barré syndrome","neuro","gbs;guillain barre"],
+["spinal-shock","Spinal shock","neuro","neurogenic shock"],
+["panic","Panic attack","neuro","anxiety"],
+["sepsis","Sepsis","infect","septic shock;severe sepsis"],
+["uti","Urinary tract infection","infect","uti;cauti;pyelonephritis"],
+["cdiff","C. difficile infection","infect","c diff;clostridioides difficile;c-diff;cdi"],
+["neutropenic","Neutropenic fever","infect","febrile neutropenia"],
+["anaphylaxis","Anaphylaxis","infect","anaphylactic shock;allergic reaction"],
+["meningitis","Meningitis","infect",""],
+["ssi","Surgical site infection","infect","wound infection"],
+["ugib","Upper GI bleed","gi","gi bleed;gastrointestinal bleed;bleeding ulcer;peptic ulcer;melena;hematemesis"],
+["lgib","Lower GI bleed","gi","hematochezia"],
+["sbo","Bowel obstruction","gi","sbo;small bowel obstruction"],
+["ileus","Paralytic ileus","gi","ileus"],
+["pancreatitis","Acute pancreatitis","gi",""],
+["he","Hepatic encephalopathy","gi","liver failure;encephalopathy;hyperammonemia"],
+["peritonitis","Peritonitis","gi","perforated bowel"],
+["ahtr","Acute hemolytic transfusion reaction","heme","transfusion reaction;hemolytic reaction;abo incompatibility"],
+["fnhtr","Febrile transfusion reaction","heme","febrile non-hemolytic transfusion reaction"],
+["taco","Transfusion-associated circulatory overload","heme","taco"],
+["trali","Transfusion-related acute lung injury","heme","trali"],
+["hit","Heparin-induced thrombocytopenia","heme","hit"],
+["dic","DIC","heme","disseminated intravascular coagulation"],
+["sickle","Sickle cell crisis","heme","vaso-occlusive crisis"],
+["compartment","Compartment syndrome","msk",""],
+["fat-embolism","Fat embolism syndrome","msk","fat embolism"],
+["dehiscence","Wound dehiscence","msk","incision separation"],
+["evisceration","Wound evisceration","msk","evisceration"],
+["pressure-injury","Pressure injury","msk","pressure ulcer;bedsore;decubitus"],
+["extravasation","IV infiltration / extravasation","msk","infiltration;extravasation;iv infiltration"],
+["phlebitis","Phlebitis","msk","thrombophlebitis"],
+["hip-dislocation","Hip dislocation","msk","prosthesis dislocation"],
+["pph","Postpartum hemorrhage","ob","pph;uterine atony"],
+["preeclampsia","Preeclampsia","ob","pre-eclampsia;pih;gestational hypertension"],
+["eclampsia","Eclampsia","ob",""],
+["abruption","Placental abruption","ob","abruptio placentae"],
+["oird","Opioid-induced respiratory depression","tox","opioid overdose;oversedation;opioid toxicity;narcotic overdose;respiratory depression"],
+["mg-tox","Magnesium toxicity","tox","hypermagnesemia;magnesium sulfate toxicity"],
+["digoxin","Digoxin toxicity","tox","dig toxicity"],
+["lithium","Lithium toxicity","tox",""],
+["serotonin","Serotonin syndrome","tox",""],
+["nms","Neuroleptic malignant syndrome","tox","nms"],
+["mh","Malignant hyperthermia","tox",""],
+["vanco","Vancomycin infusion reaction","tox","red man syndrome;vancomycin flushing"],
+["anticholinergic","Anticholinergic toxicity","tox",""]
+];
+const DX = {}; const DXL = [];
+for (const [id,name,sys,al] of DX_RAW){ const d={id,name,sys,alias:al?al.split(";"):[]}; DX[id]=d; DXL.push(d); }
+
+/* Cases: a = accepted answers (first is primary), cl = close, c = [time, tag, entry] (6 open + 5 locked), p.o[0] is the correct first move. */
+const CASES = [
+{ a:["hypoglycemia"], pt:{n:"Marisol Vega",age:58,sex:"F",rm:"4W-12",unit:"Med-Surg",al:"Sulfa",code:"Full code",fall:false},
+  sum:"She got her full basal and mealtime insulin but ate almost nothing. Tremor, sweating and a racing heart are the adrenaline response. The new confusion means her brain isn’t getting enough glucose.",
+  c:[["1115","Assess","Found sitting on the edge of the bed. Says she “feels off.” Speech a little slow."],
+     ["1115","VS","HR 112 · BP 138/82 · RR 18 · SpO₂ 97% RA · T 36.6 °C"],
+     ["1116","Assess","Skin cool and clammy. Forehead damp."],
+     ["1116","Patient","“My hands won’t stop shaking.”"],
+     ["1117","History","Admitted 2 days ago for left lower leg cellulitis. On IV cefazolin q8h."],
+     ["1118","Assess","Oriented to person and place only. Was A&O ×4 at 0800."],
+     ["1120","I&O","Breakfast tray 0830: ate about 10%. Said she was nauseated."],
+     ["1122","MAR","0730 insulin glargine 30 units subcut. 0800 insulin lispro 8 units subcut with breakfast tray."],
+     ["1124","History","Type 2 diabetes for 15 years. Home regimen: metformin plus insulin."],
+     ["1125","Patient","“I’m suddenly so hungry. Can I have some juice?”"],
+     ["1126","Lab","Point-of-care glucose: 48 mg/dL."]],
+  p:{q:"She is awake and can swallow safely. What do you do first?",
+     o:["Give 15 g of fast-acting carbohydrate, like 4 oz of juice, and recheck glucose in 15 minutes","Push 50 mL of IV dextrose 50% right away","Give glucagon 1 mg IM","Hold the noon insulin and recheck glucose at lunch"],
+     why:"If the patient is awake and can swallow, treat by mouth first with the rule of 15: 15 g of carbohydrate, then a recheck in 15 minutes. IV dextrose and glucagon are for a patient who can’t swallow safely or is unresponsive. Holding the next dose doesn’t fix a glucose of 48 right now."},
+  l:["Early signs are adrenergic: shakiness, sweating, tachycardia, hunger. Confusion and slurred speech mean the brain is short on glucose.","Watch for a mismatch between insulin given and food eaten. Nausea and a skipped tray are red flags before mealtime insulin.","Once glucose is above 70 mg/dL, give a snack with protein or complex carbs so it doesn’t drop again."]},
+
+{ a:["oird"], pt:{n:"Dorothy Hale",age:72,sex:"F",rm:"5E-03",unit:"Ortho",al:"NKDA",code:"Full code",fall:true},
+  sum:"Too much opioid, plus gabapentin, untreated sleep apnea, and someone else pressing her PCA button. Sedation came first, then slow breathing. Her CO₂ climbed while the oxygen kept her SpO₂ looking almost fine.",
+  c:[["0210","Assess","Asleep and snoring loudly. Hard to rouse. Drifts back off mid-sentence."],
+     ["0210","History","Post-op day 0, right total knee arthroplasty."],
+     ["0211","VS","HR 64 · BP 104/60 · T 37.0 °C · SpO₂ 91% on 2 L nasal cannula"],
+     ["0212","Assess","Skin warm and dry. Knee dressing dry and intact."],
+     ["0212","History","Obstructive sleep apnea. Uses CPAP at home; machine not brought in."],
+     ["0213","Assess","Pasero Opioid-Induced Sedation Scale: 3. Frequently drowsy, drifts off during conversation."],
+     ["0215","VS","RR 8, shallow, with pauses up to 15 seconds."],
+     ["0216","Monitor","Capnography EtCO₂ 58 mmHg. It was 38 at 2200."],
+     ["0217","Assess","Pupils 2 mm, equal, reactive."],
+     ["0218","Family","Daughter: “She kept groaning in her sleep, so I pressed the button for her a few times.”"],
+     ["0219","MAR","Hydromorphone PCA, 0.2 mg demand dose, 10-minute lockout. 12 doses delivered in the last 2 hours. Gabapentin 300 mg PO at 2100."]],
+  p:{q:"What do you do first?",
+     o:["Stop the PCA, try to rouse her and coach her to breathe, and get naloxone ready per protocol","Turn the oxygen up to 6 L and recheck in 30 minutes","Let her sleep, since her pain is finally under control","Put her on CPAP and leave the PCA running"],
+     why:"Stop the drug, stimulate her, and support her breathing. Give naloxone if she doesn’t respond, diluted and titrated to her breathing rate so you don’t reverse all of her pain relief. More oxygen only hides hypoventilation: the SpO₂ looks fine while CO₂ keeps rising."},
+  l:["Sedation comes before respiratory depression. Check sedation level along with RR and SpO₂.","Only the patient should press a PCA button. “PCA by proxy” is a well-known cause of overdose.","Sleep apnea, older age, and gabapentinoids all raise the risk. Capnography catches hypoventilation earlier than pulse oximetry, especially when the patient is on oxygen."]},
+
+{ a:["sepsis"], cl:["uti"], pt:{n:"Ruth Okonkwo",age:74,sex:"F",rm:"5E-17",unit:"Ortho",al:"Codeine",code:"Full code",fall:true},
+  sum:"A catheter-associated urinary infection has turned into sepsis. New confusion was the first sign. Then came tachycardia, falling urine output, fever, hypotension and a high lactate.",
+  c:[["0640","Family","Daughter: “She’s not herself. She keeps trying to get out of bed and doesn’t know where she is.”"],
+     ["0640","History","Post-op day 3, left hip hemiarthroplasty after a fall at home."],
+     ["0642","VS","HR 118 · RR 24 · SpO₂ 94% RA"],
+     ["0643","Assess","Skin warm and flushed. Hip incision clean, dry, edges together."],
+     ["0645","I&O","Urine output 90 mL over the last 6 hours."],
+     ["0646","Lines","Indwelling urinary catheter still in place since surgery."],
+     ["0650","Assess","Urine in the bag is cloudy, dark, and foul-smelling."],
+     ["0652","VS","T 38.7 °C"],
+     ["0653","VS","BP 86/48 (MAP 61). Her baseline is 132/74."],
+     ["0710","Lab","WBC 18.2 ×10³/µL."],
+     ["0712","Lab","Lactate 4.1 mmol/L."]],
+  p:{q:"Orders arrive for blood cultures, an IV antibiotic, and a fluid bolus. Which do you do first?",
+     o:["Draw the blood cultures, then give the first antibiotic dose without delay","Give the antibiotic now and draw cultures after the dose","Wait for the urinalysis before starting anything","Put soft restraints on so she can’t pull at the catheter"],
+     why:"Cultures go first so the antibiotic doesn’t sterilize the sample, but they shouldn’t delay the antibiotic by more than a few minutes. The fluid bolus can run at the same time through a second line. Restraints make delirium worse and don’t treat the cause."},
+  l:["In older adults, new confusion is often the first sign of infection, before fever.","A MAP under 65 or a lactate of 4 or more means septic shock is close. Expect 30 mL/kg of crystalloid.","The risk of a catheter-associated UTI rises every day the catheter stays in. Ask whether it’s still needed every shift."]},
+
+{ a:["ahtr"], cl:["fnhtr","anaphylaxis","taco"], pt:{n:"Andre Thompson",age:45,sex:"M",rm:"6N-08",unit:"Med-Surg",al:"NKDA",code:"Full code",fall:false},
+  sum:"He got the wrong blood type: a type A unit went into a type O patient. Within 15 minutes the red cells broke down. That caused fever, back pain, low blood pressure, dark urine and early oozing from IV sites.",
+  c:[["1420","Patient","“Something feels wrong. I can’t explain it.”"],
+     ["1420","History","Admitted for black, tarry stools. Hgb 6.8 g/dL this morning."],
+     ["1421","VS","HR 124 · BP 96/58 · RR 22"],
+     ["1421","Assess","Face flushed. Shaking chills."],
+     ["1422","Patient","“My lower back suddenly really hurts.”"],
+     ["1422","VS","T 38.4 °C. It was 37.0 °C at 1400."],
+     ["1423","Lines","An infusion has been running since 1405 through an 18-gauge IV in the left forearm. Site looks fine."],
+     ["1424","Assess","Oozing from the IV site and from old blood-draw sites."],
+     ["1425","I&O","Urine in the urinal is dark red-brown."],
+     ["1426","History","Unit 2 of packed red blood cells was started at 1405."],
+     ["1427","Lines","The unit tag reads “A Pos.” His wristband blood type reads “O Pos.”"]],
+  p:{q:"What do you do first?",
+     o:["Stop the transfusion and keep the IV open with 0.9% saline through new tubing","Slow the transfusion and give acetaminophen","Give diphenhydramine and finish the unit","Flush the blood tubing with lactated Ringer’s"],
+     why:"Stop the blood right away. Change to new tubing so no more red cells enter the vein, and keep the line open with normal saline. Then call the provider and the blood bank, and send back the bag, the tubing, and blood and urine samples. Lactated Ringer’s contains calcium and is not used with blood products."},
+  l:["Most severe reactions start within the first 15 minutes. Stay with the patient and take vitals early.","Bedside checks are done by two people, matching the unit tag to the wristband. Wrong-patient errors are the classic cause.","Fever, flank or back pain, hypotension and red-brown urine together point to hemolysis."]},
+
+{ a:["fvo","hf","pulm-edema"], cl:["taco"], label:"Fluid volume overload with heart failure", pt:{n:"Evelyn Park",age:79,sex:"F",rm:"3W-21",unit:"Telemetry",al:"Lisinopril (cough)",code:"Full code",fall:true},
+  sum:"Continuous IV fluids, with her home diuretic held, overloaded a heart with an ejection fraction of 25%. She gained 2 kg, took in about 2 L more than she put out, and the fluid backed into her lungs.",
+  c:[["0315","Patient","“I keep waking up feeling like I can’t breathe.”"],
+     ["0316","VS","RR 26 · HR 104 · BP 162/90 · SpO₂ 89% RA"],
+     ["0317","Assess","Crackles in both lung bases."],
+     ["0318","History","Admitted 2 days ago for community-acquired pneumonia."],
+     ["0318","I&O","Last 24 h: intake 3,400 mL, output 1,150 mL."],
+     ["0319","Assess","2+ pitting edema in both ankles."],
+     ["0325","VS","Weight 74.2 kg. Yesterday: 72.1 kg."],
+     ["0326","Assess","Neck veins distended with the head of the bed at 45°."],
+     ["0327","MAR","0.9% NaCl at 125 mL/h since admission. Home furosemide held on admission."],
+     ["0330","Assess","Coughing up pink, frothy sputum."],
+     ["0331","History","Heart failure with reduced ejection fraction, EF 25%."]],
+  p:{q:"What do you do first?",
+     o:["Sit her upright with her legs down, apply oxygen, and call the provider","Speed up the IV fluids to treat her tachycardia","Lay her flat with her legs raised","Have her drink plenty of water to loosen the sputum"],
+     why:"Sitting upright with the legs down lowers venous return and lets the lungs expand. Oxygen treats the low SpO₂. She needs a provider for IV diuretics and for the fluid order to be stopped or reduced. Laying her flat or adding fluid makes pulmonary edema worse."},
+  l:["1 kg of weight gained overnight is about 1 L of retained fluid. Weigh at the same time, on the same scale, in the same clothes.","Watch I&O closely in anyone with heart failure who is on maintenance IV fluids.","If home diuretics are held on admission, ask when they should restart."]},
+
+{ a:["pe"], cl:["dvt"], pt:{n:"Daniel Kim",age:56,sex:"M",rm:"4E-09",unit:"Surgical",al:"NKDA",code:"Full code",fall:false},
+  sum:"A clot from his right calf travelled to his lungs. Cancer, major surgery, staying in bed and refused anticoagulant doses set it up. Sudden breathlessness with clear lungs and a low SpO₂ is the classic picture.",
+  c:[["1030","Patient","“I suddenly can’t catch my breath.”"],
+     ["1030","Assess","Anxious, restless, sitting up and gripping the bed rails."],
+     ["1031","VS","HR 122 · RR 30 · BP 118/72 · SpO₂ 86% RA · T 37.6 °C"],
+     ["1032","Assess","Lungs clear in all fields."],
+     ["1032","History","Post-op day 2, open sigmoid colectomy for colon cancer."],
+     ["1033","Patient","“It hurts in my chest when I breathe in.”"],
+     ["1035","History","Has refused to walk since surgery because he’s “too sore.”"],
+     ["1036","MAR","Enoxaparin 40 mg subcut: refused yesterday and this morning."],
+     ["1037","Assess","Right calf swollen, warm, and tender. It measures 3 cm more around than the left."],
+     ["1045","Lab","ABG: pH 7.49 · PaCO₂ 30 · PaO₂ 58."],
+     ["1050","Lab","D-dimer markedly elevated."]],
+  p:{q:"What do you do first?",
+     o:["Raise the head of the bed, apply oxygen, stay with him, and call the rapid response team","Massage his right calf to ease the pain","Give the missed enoxaparin dose now","Walk him in the hallway to improve circulation"],
+     why:"Support oxygenation and get help fast. He needs imaging and full anticoagulation, which the preventive dose won’t provide. Massaging the calf or walking him can break off more clot."},
+  l:["Cancer, recent surgery and immobility together carry a very high VTE risk.","A refused anticoagulant dose is a finding. Report it, and teach the patient why the dose matters.","Sudden dyspnea and hypoxemia with clear lungs should make you think of PE."]},
+
+{ a:["hyperk"], cl:["aki"], pt:{n:"Samuel Reyes",age:61,sex:"M",rm:"2S-14",unit:"Step-down",al:"Iodine contrast",code:"Full code",fall:true},
+  sum:"He missed two dialysis sessions and ate a weekend of high-potassium food, and his kidneys can’t clear it. Potassium is 7.1, with weak legs, a slow heart rate and peaked T waves that are starting to widen.",
+  c:[["0905","Patient","“My legs feel heavy, like I can’t lift them.”"],
+     ["0905","VS","HR 52 · BP 152/94 · RR 18 · SpO₂ 96% RA"],
+     ["0906","Assess","Leg strength 3/5 on both sides. Reflexes diminished."],
+     ["0907","Patient","“My hands and feet are tingling.”"],
+     ["0907","Assess","Left forearm AV fistula with a palpable thrill and audible bruit."],
+     ["0908","I&O","Says he passes only about 100 mL of urine a day."],
+     ["0910","History","Missed hemodialysis Friday and Monday. “My car broke down.”"],
+     ["0911","History","Weekend diet: bananas, orange juice, potato chips, and salt substitute on everything."],
+     ["0912","Monitor","Tall, peaked T waves. QRS starting to widen."],
+     ["0920","Lab","BUN 88 mg/dL · creatinine 9.4 mg/dL."],
+     ["0921","Lab","Potassium 7.1 mEq/L."]],
+  p:{q:"What do you do first?",
+     o:["Put him on continuous cardiac monitoring and prepare to give IV calcium gluconate as ordered","Recheck the potassium in 4 hours to confirm the trend","Walk him to the bathroom to strengthen his legs","Start the ordered IV fluids with 20 mEq KCl added"],
+     why:"With ECG changes, this is a cardiac emergency. Calcium protects the heart from arrhythmia within minutes, but it doesn’t lower the potassium. Insulin with dextrose, potassium binders and urgent dialysis follow. Walking him now risks a fall, and adding potassium is dangerous."},
+  l:["A potassium of 6.5 or more, or any ECG change, needs action now.","Salt substitutes are usually potassium chloride, a hidden source of potassium for dialysis patients.","A hemolyzed sample can falsely raise potassium. If the result surprises you, ask for a redraw, but act on ECG changes."]},
+
+{ a:["dka"], cl:["hhs"], pt:{n:"Kayla Brooks",age:19,sex:"F",rm:"ED-07",unit:"ED hold",al:"NKDA",code:"Full code",fall:false},
+  sum:"She stopped her insulin while sick with the flu. Without insulin her body burned fat for fuel, making ketones and acid. Her deep fast breathing is the body blowing off acid, and the high sugar is drying her out.",
+  c:[["1640","Patient","“My stomach hurts and I’ve been throwing up all day.”"],
+     ["1640","Assess","Lethargic but answers questions appropriately."],
+     ["1641","VS","HR 128 · BP 98/60 · RR 30 · T 37.4 °C"],
+     ["1642","Assess","Mucous membranes dry. Skin turgor poor."],
+     ["1642","Patient","“I’ve been so thirsty, and I’m peeing constantly.”"],
+     ["1643","Family","Mother: “She’s had the flu for 3 days and hasn’t been eating.”"],
+     ["1645","Assess","Breathing deep and regular, not labored."],
+     ["1646","Assess","Fruity odor on her breath."],
+     ["1647","Patient","“I stopped my insulin since I wasn’t eating anything.”"],
+     ["1650","Lab","Glucose 486 mg/dL."],
+     ["1655","Lab","pH 7.12 · HCO₃ 9 mEq/L · beta-hydroxybutyrate 6.2 mmol/L."]],
+  p:{q:"Orders: 0.9% saline bolus, regular insulin infusion, and potassium replacement per protocol. Which do you start first?",
+     o:["The 0.9% saline bolus","The insulin infusion, before any fluids","A one-time 20-unit subcut insulin dose","Sodium bicarbonate IV"],
+     why:"Fluids come first to restore circulating volume and start bringing glucose down. Check potassium before starting insulin, because insulin drives potassium into cells. If her potassium is under 3.3, potassium goes in before insulin. Bicarbonate is rarely used."},
+  l:["Kussmaul breathing is deep and regular. It is the body compensating for acid, not a lung problem.","Sick-day rule: never stop basal insulin. Check glucose and ketones often and drink fluids.","Expect dextrose to be added to the IV when glucose falls to about 200–250 mg/dL, while insulin continues to clear the ketones."]},
+
+{ a:["compartment"], pt:{n:"Tyler Nguyen",age:24,sex:"M",rm:"5E-11",unit:"Ortho",al:"NKDA",code:"Full code",fall:true},
+  sum:"Swelling inside the cast is squeezing the muscles and nerves of his leg. The tell is pain that is out of proportion, ignores opioids, and gets worse when you stretch the toes. Losing the pulse is a late sign.",
+  c:[["2210","Patient","“The pain is getting worse, not better.”"],
+     ["2210","History","Motorcycle crash yesterday. Closed fracture of the left tibia."],
+     ["2211","MAR","Morphine 4 mg IV given 40 minutes ago. Pain still 9/10."],
+     ["2212","Assess","Left toes swollen."],
+     ["2212","VS","HR 108 · BP 138/84 · T 37.2 °C"],
+     ["2213","Patient","“It feels like my leg is going to burst.”"],
+     ["2215","Assess","Pain gets sharply worse when you gently flex his toes."],
+     ["2216","Assess","Long-leg cast put on 6 hours ago. The edges are snug."],
+     ["2217","Patient","“My foot feels like pins and needles.”"],
+     ["2218","Assess","Capillary refill 4 sec in left toes, 2 sec in right. Left foot pulse still palpable."],
+     ["2219","Assess","Reduced feeling in the web space between his first and second toes."]],
+  p:{q:"What do you do first?",
+     o:["Keep the leg at heart level and call the provider right away","Raise the leg on three pillows and apply ice","Give another dose of morphine and reassess in an hour","Keep watching and call if the pulse disappears"],
+     why:"This is a surgical emergency. Fasciotomy works best within about 6 hours. Keep the leg at heart level, because raising it above the heart cuts arterial flow into a limb already under pressure. Expect the cast to be split or removed. A missing pulse is a late sign, and waiting for it can cost the leg."},
+  l:["Pain out of proportion and pain on passive stretch are the earliest signs.","A palpable pulse does not rule out compartment syndrome.","Do frequent neurovascular checks after casting or fracture: color, warmth, cap refill, sensation, movement, pain."]},
+
+{ a:["ad"], cl:["htn-crisis"], pt:{n:"Marcus Bell",age:33,sex:"M",rm:"R-04",unit:"Rehab",al:"NKDA",code:"Full code",fall:true},
+  sum:"An overfull bladder below his spinal cord injury set off a massive reflex surge in blood pressure. His body sensed it and slowed his heart, flushing and sweating above the injury, while the skin below stayed pale and cool.",
+  c:[["0605","Patient","“I suddenly have a pounding headache.”"],
+     ["0605","Assess","Blurred vision. Stuffy nose."],
+     ["0606","VS","BP 204/112 (baseline 98/60) · HR 48"],
+     ["0606","Assess","Face and neck flushed and sweating."],
+     ["0607","Assess","Below the chest, skin pale and cool with goosebumps."],
+     ["0607","History","Rehab unit. Uses a wheelchair."],
+     ["0610","History","Complete spinal cord injury at T4 from a diving accident 8 months ago."],
+     ["0611","History","Intermittent catheterization every 4–6 hours. Last cath 7 hours ago."],
+     ["0612","Assess","Lower abdomen firm and bulging above the pubic bone."],
+     ["0613","Patient","“This happened once at home. It was scary.”"],
+     ["0614","Assess","Bladder scan: 900 mL."]],
+  p:{q:"What do you do first?",
+     o:["Sit him upright with his legs down, loosen anything tight, then find and remove the trigger","Lay him flat and raise his legs","Give PRN acetaminophen and recheck BP in an hour","Cover him with a warm blanket and dim the lights"],
+     why:"Sitting up with the legs down pools blood and lowers pressure right away. Then fix the cause, usually the bladder, followed by bowel and skin. Catheterize with lidocaine jelly. If BP stays very high, a fast-acting antihypertensive follows. Laying him flat raises the pressure further."},
+  l:["Autonomic dysreflexia happens with spinal injuries at T6 or above.","The slow heart rate is the body’s reflex response to the blood pressure spike.","Untreated, it can cause stroke or seizures. Teach the patient and family the signs and the triggers."]},
+
+{ a:["etoh"], cl:["delirium"], pt:{n:"Gary Dunn",age:54,sex:"M",rm:"5E-22",unit:"Ortho",al:"NKDA",code:"Full code",fall:true},
+  sum:"About 56 hours after his last drink, he is in alcohol withdrawal heading into delirium tremens. He has autonomic overdrive, tremor, insomnia and visual hallucinations, and his CIWA score is 22.",
+  c:[["1930","Assess","Restless. Keeps getting up to “check on his truck.”"],
+     ["1930","VS","HR 118 · BP 168/98 · T 37.9 °C · RR 22"],
+     ["1931","Assess","Sweating. Fine tremor of both outstretched hands."],
+     ["1932","History","Admitted 2 days ago for a left humerus fracture after a fall."],
+     ["1932","Assess","Disoriented to time and place."],
+     ["1933","Patient","“I can’t sleep. I feel like I’m jumping out of my skin.”"],
+     ["1935","Lab","AST 142 · ALT 64 · MCV 104 · platelets 98."],
+     ["1936","Family","Wife: “He has a few beers after work. Okay, more than a few.”"],
+     ["1937","Patient","“Why are there bugs crawling on the wall?”"],
+     ["1938","Family","Wife says his last drink was about 56 hours ago, the night before the fall."],
+     ["1940","Assess","CIWA-Ar score: 22."]],
+  p:{q:"What do you do first?",
+     o:["Give the ordered benzodiazepine per the CIWA protocol and start seizure precautions","Apply four-point restraints","Give haloperidol alone for the hallucinations","Hold all sedatives until he is oriented again"],
+     why:"Benzodiazepines are the treatment. They calm the overactive nervous system and prevent seizures and delirium tremens. Restraints make agitation worse and can cause injury. Haloperidol alone lowers the seizure threshold and doesn’t treat withdrawal."},
+  l:["Typical timeline: tremor at 6–12 h, seizures at 12–48 h, delirium tremens at 48–72 h after the last drink.","Give thiamine before glucose to prevent Wernicke encephalopathy.","Ask about alcohol use honestly and specifically on admission, especially before surgery."]},
+
+{ a:["icp"], cl:["stroke","seizure"], pt:{n:"Peter Lindqvist",age:40,sex:"M",rm:"N-06",unit:"Neuro",al:"NKDA",code:"Full code",fall:true},
+  sum:"A subdural bleed is expanding and pushing on his brain. He is getting less alert, one pupil is enlarging on the same side, and he now has Cushing’s triad, a late sign of herniation.",
+  c:[["1310","Family","Wife: “He’s a lot sleepier than he was an hour ago.”"],
+     ["1310","Patient","“My head is pounding.”"],
+     ["1311","Assess","Vomited once, forcefully, with no nausea beforehand."],
+     ["1312","Assess","GCS 13 (E3 V4 M6). It was 15 at 0800."],
+     ["1312","History","Fell from a ladder this morning."],
+     ["1313","Assess","Right pupil 5 mm and sluggish. Left pupil 3 mm and brisk."],
+     ["1315","History","CT on arrival: small right subdural hematoma, managed without surgery."],
+     ["1316","Assess","Left arm drifts down when held out."],
+     ["1317","VS","BP 176/64 (was 138/80) · HR 54 (was 82)"],
+     ["1318","VS","Breathing irregular, with pauses up to 20 seconds."],
+     ["1320","Assess","GCS now 9."]],
+  p:{q:"What do you do first?",
+     o:["Raise the head of the bed to 30°, keep his head midline, and call the provider or rapid response now","Lay him flat with his legs raised","Give PRN acetaminophen and recheck neuro in 4 hours","Have him cough and deep breathe every hour"],
+     why:"Head up with the neck straight helps venous blood drain from the brain. He needs emergency imaging and likely surgery. Coughing, straining and neck flexion all raise intracranial pressure, and a 4-hour recheck is far too long."},
+  l:["Level of consciousness is the earliest and most sensitive sign of rising ICP.","A pupil that enlarges on the same side as the bleed means the brain is pressing on cranial nerve III.","Cushing’s triad (high blood pressure with a widening pulse pressure, slow heart rate, irregular breathing) is a late sign."]},
+
+{ a:["ugib","hypovolemic"], pt:{n:"Frank Moretti",age:66,sex:"M",rm:"3W-05",unit:"Med-Surg",al:"NKDA",code:"Full code",fall:true},
+  sum:"He has a bleeding peptic ulcer from steroids plus high-dose ibuprofen. Dizziness on sitting up and a racing heart showed volume loss before the black stool and coffee-ground vomit appeared.",
+  c:[["0810","Patient","“I feel dizzy when I sit up.”"],
+     ["0811","VS","HR 116 (was 84) · BP 102/64 lying, 82/50 sitting"],
+     ["0811","Assess","Pale, cool and clammy."],
+     ["0812","History","Admitted for a COPD flare-up. On prednisone 40 mg daily."],
+     ["0813","Patient","“My stomach has been burning for about a week.”"],
+     ["0814","I&O","Urine output 20 mL/h for the last 3 hours."],
+     ["0816","History","Takes ibuprofen 800 mg three times a day for knee arthritis."],
+     ["0817","Assess","Bowel sounds hyperactive."],
+     ["0820","Assess","Large black, tarry, sticky stool."],
+     ["0822","Assess","Vomited about 200 mL of dark brown material that looks like coffee grounds."],
+     ["0830","Lab","Hgb 7.1 g/dL (13.4 on admission) · BUN 48 with creatinine 1.0."]],
+  p:{q:"What do you do first?",
+     o:["Keep him NPO, start two large-bore IVs, and send a type and crossmatch","Give an oral antacid and recheck in 2 hours","Help him walk to the bathroom","Give his morning ibuprofen with food"],
+     why:"He is losing blood and volume. Large-bore access lets you give fluids and blood fast, and NPO prepares him for endoscopy. Walking him risks fainting and a fall. NSAIDs caused the ulcer."},
+  l:["A drop in BP or rise in HR when sitting up can mean 15–20% of blood volume is already lost.","Steroids plus NSAIDs sharply raise ulcer risk. Look for a stomach-protecting medication.","BUN rises out of proportion to creatinine because the blood is being digested in the gut."]},
+
+{ a:["pph","hypovolemic"], pt:{n:"Aisha Rahman",age:31,sex:"F",rm:"PP-02",unit:"Postpartum",al:"NKDA",code:"Full code",fall:true},
+  sum:"Her uterus isn’t contracting after a long, oxytocin-augmented labor with a big baby, and a full bladder is pushing it out of place. She has lost over a liter of blood.",
+  c:[["0420","Patient","“I feel lightheaded and kind of cold.”"],
+     ["0420","Assess","Pale, anxious, restless."],
+     ["0421","VS","HR 112 · BP 98/58 (was 122/76) · RR 22"],
+     ["0421","History","Gave birth vaginally 60 minutes ago."],
+     ["0422","History","Fourth birth (G4 P4). 19-hour labor augmented with oxytocin."],
+     ["0422","History","Baby weighed 4.3 kg (9 lb 8 oz)."],
+     ["0424","Assess","Bladder distended. Has not voided since the birth."],
+     ["0425","Assess","Fundus soft and boggy, 2 cm above the umbilicus, shifted to the right."],
+     ["0426","Assess","Steady trickle of blood. Clots pass when the fundus is pressed."],
+     ["0427","Assess","Pad soaked through in 15 minutes."],
+     ["0428","I&O","Quantified blood loss: 1,100 mL."]],
+  p:{q:"What do you do first?",
+     o:["Massage the fundus firmly until it firms up","Insert a urinary catheter first","Speed up the IV fluids and recheck in 30 minutes","Sit her up in high Fowler’s"],
+     why:"Uterine atony is the cause, and fundal massage starts the uterus contracting right away. Empty the bladder next so the uterus can contract fully, and expect uterotonic drugs. Fluids alone don’t stop the bleeding."},
+  l:["Causes of PPH, the “4 Ts”: Tone (most common), Trauma, Tissue, Thrombin.","Risk factors: big baby, many prior births, long or induced labor, multiples.","A full bladder pushes the uterus up and to the side and stops it contracting."]},
+
+{ a:["mg-tox"], cl:["preeclampsia","eclampsia"], pt:{n:"Brianna Cole",age:26,sex:"F",rm:"LD-09",unit:"L&D",al:"Latex",code:"Full code",fall:true},
+  sum:"Magnesium is cleared by the kidneys. Her kidneys have slowed, so her magnesium level has climbed to 10.2. Lost reflexes and a respiratory rate of 10 come before respiratory arrest.",
+  c:[["2240","Patient","“I feel so heavy and tired. I can barely keep my eyes open.”"],
+     ["2240","Assess","Speech slurred."],
+     ["2241","VS","RR 10 · BP 138/88 · HR 72 · SpO₂ 93% RA"],
+     ["2241","Assess","Flushed and feels warm."],
+     ["2242","History","35 weeks pregnant. Admitted 18 hours ago for preeclampsia with severe features."],
+     ["2242","I&O","Urine output 15 mL/h for the past 3 hours."],
+     ["2245","Assess","Patellar reflexes absent. They were 2+ at 1200."],
+     ["2246","MAR","Magnesium sulfate 2 g/h continuous infusion."],
+     ["2247","Lab","Creatinine 1.6 mg/dL (0.6 on admission)."],
+     ["2248","Monitor","Fetal heart rate baseline 135 with minimal variability."],
+     ["2250","Lab","Serum magnesium 10.2 mg/dL (target 4–7)."]],
+  p:{q:"What do you do first?",
+     o:["Stop the magnesium infusion, call the provider, and have calcium gluconate ready","Slow the infusion to 1 g/h","Give a fluid bolus to increase urine output","Leave it running, since drowsiness means it’s working"],
+     why:"Stop the source right away. Calcium gluconate is the antidote and should be at the bedside whenever magnesium runs. Slowing the rate still adds magnesium, and a fluid bolus can push a preeclamptic patient into pulmonary edema."},
+  l:["Check deep tendon reflexes, RR and urine output every hour while magnesium is running.","Reflexes disappear at about 7–10 mg/dL. Breathing slows dangerously above about 12 mg/dL.","Urine output under 30 mL/h is a warning sign because magnesium builds up when the kidneys slow."]},
+
+{ a:["digoxin"], cl:["hypok","brady"], pt:{n:"Harold Jensen",age:84,sex:"M",rm:"3W-18",unit:"Telemetry",al:"Penicillin",code:"DNR",fall:true},
+  sum:"He is a small, elderly man with worsening kidney function, and a new diuretic dropped his potassium. Low potassium makes digoxin more toxic. Nausea, confusion, slow heart rate and yellow-green vision are classic.",
+  c:[["0730","Family","Son: “He’s not eating. He says everything makes him sick.”"],
+     ["0730","Patient","“I feel nauseous all the time.”"],
+     ["0731","Assess","Confused this morning. Usually sharp."],
+     ["0732","VS","Apical HR 48, irregular · BP 112/64"],
+     ["0732","History","Atrial fibrillation and heart failure."],
+     ["0733","VS","Weight 52 kg."],
+     ["0735","MAR","Furosemide 40 mg PO twice daily, started 5 days ago."],
+     ["0736","Lab","Potassium 3.0 mEq/L · creatinine 1.7 mg/dL."],
+     ["0737","Patient","“Everything looks yellow-green, and there are halos around the lights.”"],
+     ["0738","MAR","Digoxin 0.25 mg PO daily, due at 0900."],
+     ["0745","Lab","Digoxin level 3.4 ng/mL."]],
+  p:{q:"What do you do with the 0900 meds?",
+     o:["Hold the digoxin and call the provider with the heart rate, potassium, and level","Give the digoxin and recheck his pulse in an hour","Give the digoxin with food to help the nausea","Give an extra furosemide dose to help clear the digoxin"],
+     why:"Every finding points to toxicity, so the dose must be held. The provider needs the apical rate, the potassium and the level to decide on potassium replacement and possibly digoxin immune Fab. More diuretic would drop the potassium further."},
+  l:["Take an apical pulse for a full minute before giving digoxin. Hold for HR under 60, or per order.","Low potassium, low magnesium, worse kidney function and older age all raise toxicity risk.","Early signs are GI (nausea, poor appetite). Visual changes and confusion follow."]},
+
+{ a:["ptx"], cl:["tension-ptx"], pt:{n:"Leon Fischer",age:59,sex:"M",rm:"2S-03",unit:"Step-down",al:"NKDA",code:"Full code",fall:false},
+  sum:"The needle for his subclavian central line punctured the top of his right lung, letting air into the pleural space. His trachea is still midline and his BP is stable, so it is not a tension pneumothorax yet.",
+  c:[["1505","Patient","“It’s suddenly hard to breathe.”"],
+     ["1505","Patient","“Sharp pain on the right side of my chest when I breathe in.”"],
+     ["1506","VS","HR 114 · RR 28 · SpO₂ 88% RA · BP 128/78"],
+     ["1506","Assess","Anxious and using accessory muscles."],
+     ["1507","History","Admitted for severe malnutrition. Starting parenteral nutrition (TPN)."],
+     ["1507","Assess","Breath sounds diminished on the right."],
+     ["1509","Lines","Right subclavian central line placed at the bedside 30 minutes ago."],
+     ["1510","Assess","Right side of the chest rises less than the left."],
+     ["1511","Assess","Hyperresonant to percussion over the right chest."],
+     ["1512","Assess","Trachea midline. Neck veins flat."],
+     ["1520","Note","Portable chest X-ray: visible pleural line, no lung markings at the right apex."]],
+  p:{q:"What do you do first?",
+     o:["Stay with him, raise the head of the bed, apply oxygen, call the provider, and prepare for a chest tube","Pull out the central line","Start the TPN through the new line","Lay him flat on his right side"],
+     why:"Support his breathing and get the provider, who will likely place a chest tube. Watch for signs it is turning into a tension pneumothorax: tracheal shift, falling BP, distended neck veins. A new central line isn’t used until the X-ray confirms placement."},
+  l:["Pneumothorax is a known complication of central lines, especially subclavian ones.","Confirm tip placement on X-ray before anything runs through a new central line.","Signs of tension: tracheal deviation, hypotension, JVD and worsening distress. This is an emergency for needle decompression."]},
+
+{ a:["anaphylaxis"], cl:["asthma","vanco"], pt:{n:"Jasmine Ortiz",age:37,sex:"F",rm:"4W-07",unit:"Med-Surg",al:"NKDA",code:"Full code",fall:false},
+  sum:"Eight minutes into her first dose of a cephalosporin, she has hives, airway swelling, wheezing and shock. A childhood penicillin reaction never made it into her chart.",
+  c:[["1018","Patient","“I feel like something terrible is about to happen.”"],
+     ["1018","Assess","Flushed. Scratching her arms."],
+     ["1019","VS","HR 128 · RR 26 · SpO₂ 93% RA"],
+     ["1019","History","Admitted for a kidney infection (pyelonephritis)."],
+     ["1020","Patient","“My throat feels tight and itchy.”"],
+     ["1020","Assess","Wheezes audible in both lungs."],
+     ["1021","VS","BP 82/48 (was 124/78 at 1000)."],
+     ["1021","Assess","Raised hives across her chest and neck. Lips swelling."],
+     ["1022","Assess","Voice hoarse."],
+     ["1022","MAR","First dose of IV ceftriaxone started at 1010."],
+     ["1023","Family","Mother: “She swelled up after amoxicillin as a kid. I don’t think anyone wrote that down.”"]],
+  p:{q:"What do you do first?",
+     o:["Stop the infusion and give IM epinephrine per protocol","Give IV diphenhydramine and watch for 15 minutes","Slow the infusion rate","Give an albuterol nebulizer and recheck in 15 minutes"],
+     why:"Epinephrine is the first and most important drug in anaphylaxis. It reverses airway swelling and low blood pressure. Antihistamines and albuterol help, but they don’t treat shock. Stop the trigger, call for help, and give oxygen and fluids."},
+  l:["Adult dose: 0.3–0.5 mg of 1 mg/mL epinephrine IM in the anterolateral thigh. Repeat every 5–15 minutes if needed.","Stay with the patient for the first 15 minutes of any first-dose IV antibiotic.","Symptoms can return hours later (a biphasic reaction). Expect observation after recovery."]},
+
+{ a:["stroke"], cl:["icp"], pt:{n:"George Patel",age:71,sex:"M",rm:"3W-11",unit:"Telemetry",al:"NKDA",code:"Full code",fall:true},
+  sum:"He has atrial fibrillation and his anticoagulant was held for a procedure. A clot reached the left side of his brain, causing word-finding trouble, right arm drift and right facial droop. Normal glucose rules out the most common mimic.",
+  c:[["0725","Assess","Dropped his coffee cup at breakfast."],
+     ["0726","Family","Daughter: “His words are coming out jumbled.”"],
+     ["0726","VS","BP 186/98 · HR 96 irregular · RR 18 · SpO₂ 95% RA · T 37.1 °C"],
+     ["0727","History","Admitted for pneumonia, improving."],
+     ["0727","Note","Night shift: at 0600 vitals he was “joking with the aide.”"],
+     ["0728","Assess","Can’t find the words for “pen” or “watch.” Calls the pen “the writing thing.”"],
+     ["0729","Lab","Point-of-care glucose 132 mg/dL."],
+     ["0730","History","Atrial fibrillation. Apixaban held since yesterday for a planned procedure."],
+     ["0731","Assess","Right arm drifts down within 5 seconds. Left holds steady."],
+     ["0731","Assess","Right lower face droops when he smiles."],
+     ["0735","Assess","NIH Stroke Scale: 9."]],
+  p:{q:"What do you do first?",
+     o:["Note the last known well time, call the stroke team, and keep him NPO until a swallow screen","Give him his breakfast and meds, since he’s hungry","Give PRN labetalol to get his BP below 140","Let him rest and recheck neuro in 4 hours"],
+     why:"Every minute counts. Last known well was 0600, not when breakfast came. The stroke team decides on clot-busting drugs or clot removal. He could aspirate, so nothing by mouth until a swallow screen. Some higher BP is allowed during a stroke, so don’t drop it sharply."},
+  l:["Last known well is the last time someone saw the patient normal, not when the symptoms were noticed.","Always check glucose. Hypoglycemia can look exactly like a stroke.","A-fib with a held anticoagulant is a high-risk setup for clot-related stroke."]},
+
+{ a:["delirium"], cl:["dementia","anticholinergic"], pt:{n:"Margaret O’Neil",age:86,sex:"F",rm:"3E-14",unit:"Med-Surg",al:"Morphine",code:"DNR",fall:true},
+  sum:"This is hypoactive delirium: a quiet, sleepy, inattentive patient whose change is easy to miss. Causes stack up: diphenhydramine, a urinary catheter, constipation, missing glasses and hearing aids, and broken sleep.",
+  c:[["1400","Family","Daughter: “Mom’s just not herself. She’s so quiet.”"],
+     ["1400","Assess","Drowsy during the day. Drifts off mid-conversation."],
+     ["1401","Note","Night shift: “Awake most of the night, calling out for her late husband.”"],
+     ["1401","VS","HR 84 · BP 128/72 · T 36.9 °C · SpO₂ 96% RA"],
+     ["1402","Assess","Can’t keep her attention on a task. Can’t say the months backward."],
+     ["1402","History","Admitted 3 days ago after a fall at home with mild dehydration."],
+     ["1405","Assess","Glasses and hearing aids are in her home bag. Not used since admission."],
+     ["1406","MAR","Diphenhydramine 25 mg PO PRN for sleep. Given both nights."],
+     ["1407","Lines","Indwelling urinary catheter. No bowel movement in 4 days."],
+     ["1408","Family","Daughter: “Last week she was doing her own banking and crosswords.”"],
+     ["1410","Assess","CAM screen: sudden onset, fluctuating, inattentive, disorganized thinking. Positive."]],
+  p:{q:"What do you do first?",
+     o:["Report the change, then start nondrug measures: glasses and hearing aids in, daylight, a sleep routine, family at the bedside","Apply soft wrist restraints for safety","Give another dose of diphenhydramine tonight","Chart it as baseline dementia and carry on"],
+     why:"Delirium is a medical problem with causes you can find and fix. Report it so the team can look at meds, the catheter and constipation. Sensory aids and orientation help a lot. Restraints and anticholinergic drugs like diphenhydramine make delirium worse."},
+  l:["Hypoactive delirium is the most commonly missed form. The patient seems sleepy and quiet, not agitated.","Delirium starts suddenly and comes and goes. Dementia comes on gradually and stays steady.","Avoid anticholinergics in older adults; diphenhydramine is on the Beers Criteria list."]},
+
+{ a:["neutropenic"], cl:["sepsis"], pt:{n:"Priya Shah",age:48,sex:"F",rm:"ON-10",unit:"Oncology",al:"NKDA",code:"Full code",fall:false},
+  sum:"Ten days after chemo, her neutrophils are at their lowest. A fever is the only sign she can mount, because without white cells there is no pus, redness or swelling. This is an emergency.",
+  c:[["1715","Patient","“I feel achy and completely wiped out.”"],
+     ["1715","Assess","Shaking chills."],
+     ["1716","VS","T 38.4 °C · HR 106 · BP 112/70 · RR 20"],
+     ["1716","History","Admitted directly from the oncology clinic."],
+     ["1717","Assess","Small ulcers on the inside of her cheeks."],
+     ["1717","Assess","Port site clean, no redness. Lungs clear."],
+     ["1720","History","Breast cancer. Last chemotherapy 10 days ago."],
+     ["1721","Family","Husband has had a cold all week."],
+     ["1722","Assess","No pus, wound or obvious source of infection anywhere."],
+     ["1815","VS","Repeat T 38.3 °C, one hour later."],
+     ["1820","Lab","Absolute neutrophil count 300/µL."]],
+  p:{q:"What do you do first?",
+     o:["Draw cultures and start the IV antibiotic within 60 minutes, and place her on neutropenic precautions","Give acetaminophen and recheck her temperature in 4 hours","Take a rectal temperature to confirm","Wait for the culture results before starting antibiotics"],
+     why:"Febrile neutropenia is treated as an emergency. Broad-spectrum antibiotics are due within an hour, right after cultures. Rectal temperatures and suppositories can tear tissue and let bacteria in. Waiting for cultures can be fatal."},
+  l:["The neutrophil low point (nadir) is usually 7–14 days after chemo.","With very few neutrophils, infection signs are blunted. A fever may be the only clue.","Screen visitors for illness and teach hand hygiene. No fresh flowers or standing water in the room."]},
+
+{ a:["evisceration","dehiscence"], label:"Wound dehiscence with evisceration", pt:{n:"Raymond Ellis",age:64,sex:"M",rm:"4E-15",unit:"Surgical",al:"Tape (blisters)",code:"Full code",fall:true},
+  sum:"His incision split open under the strain of a cough, and bowel has pushed through. Obesity, diabetes, steroids, low albumin and a chronic cough all weakened the healing wound.",
+  c:[["1120","Patient","“I felt something give way when I coughed.”"],
+     ["1120","Assess","Sudden gush of pink, watery drainage soaking the abdominal dressing."],
+     ["1121","VS","HR 104 · BP 142/86 · T 37.8 °C"],
+     ["1121","History","Post-op day 5, exploratory laparotomy."],
+     ["1122","History","BMI 41. Type 2 diabetes, A1c 9.6%."],
+     ["1122","History","Smoker, 40 pack-years. Chronic cough."],
+     ["1124","MAR","Prednisone 20 mg daily for rheumatoid arthritis."],
+     ["1125","Assess","Incision edges separated about 6 cm along the middle."],
+     ["1126","Lab","Albumin 2.4 g/dL."],
+     ["1127","Patient","“Please don’t make me look at it.”"],
+     ["1128","Assess","Loops of pink, moist bowel visible through the opening."]],
+  p:{q:"What do you do first?",
+     o:["Stay with him, cover the wound with sterile saline-moistened dressings, position him with knees bent, and call the surgeon","Gently push the bowel back inside","Cover it with dry gauze and tape it down","Have him sit straight up and cough to clear his lungs"],
+     why:"Moist sterile dressings keep the bowel from drying out and dying. Low Fowler’s with the knees bent takes tension off the abdomen. Keep him NPO and expect to go back to surgery. Never push the organs back in."},
+  l:["Pink, watery drainage that suddenly increases is a classic warning sign of dehiscence.","Teach patients to splint the incision with a pillow when they cough.","Healing risks: obesity, uncontrolled diabetes, steroids, smoking, poor nutrition."]},
+
+{ a:["lithium"], cl:["serotonin","nms","dehydration"], pt:{n:"Nicole Adams",age:42,sex:"F",rm:"3E-02",unit:"Med-Surg",al:"NKDA",code:"Full code",fall:true},
+  sum:"Vomiting and diarrhea dehydrated her, and a thiazide diuretic plus ibuprofen made her kidneys hold on to lithium. Her level is now twice the upper limit.",
+  c:[["1530","Patient","“I’ve had vomiting and diarrhea for two days.”"],
+     ["1530","Assess","Coarse tremor in both hands."],
+     ["1531","Assess","Unsteady on her feet. Needs help to the bathroom."],
+     ["1531","VS","HR 98 · BP 104/66 · T 37.1 °C"],
+     ["1532","Assess","Speech slurred. Drowsy."],
+     ["1532","History","Bipolar I disorder, stable for years."],
+     ["1535","MAR","Hydrochlorothiazide started 3 weeks ago for blood pressure."],
+     ["1536","Patient","“I’ve been taking ibuprofen for my back.”"],
+     ["1537","Assess","Muscle twitching in her arms."],
+     ["1540","Lab","Sodium 132 mEq/L · creatinine 1.5 mg/dL."],
+     ["1545","Lab","Lithium level 2.4 mEq/L (therapeutic 0.6–1.2)."]],
+  p:{q:"What do you do first?",
+     o:["Hold the lithium, call the provider, and prepare to give IV fluids","Give the scheduled dose with extra water","Restrict her salt intake","Give PRN ibuprofen for her back pain"],
+     why:"Stop the drug and restore fluid volume so the kidneys can clear it. Severe toxicity may need dialysis. Low sodium and NSAIDs both make the kidneys hold on to lithium, so salt restriction and ibuprofen make it worse."},
+  l:["Lithium has a narrow range. Coarse tremor, unsteady gait, confusion and GI upset are early signs of toxicity.","Thiazides, NSAIDs, ACE inhibitors and dehydration all raise lithium levels.","Teach patients to keep salt and fluid intake steady, and to call if they get vomiting or diarrhea."]},
+
+{ a:["retention"], cl:["uti","delirium"], pt:{n:"Albert Hughes",age:77,sex:"M",rm:"4E-04",unit:"Surgical",al:"NKDA",code:"Full code",fall:true},
+  sum:"An enlarged prostate, spinal anesthesia, opioids and diphenhydramine have stopped him from emptying his bladder. Agitation and a high BP are how his body is reacting to an 850 mL bladder.",
+  c:[["0450","Assess","Restless. Keeps trying to climb out of bed."],
+     ["0450","Patient","“My belly feels tight and uncomfortable.”"],
+     ["0451","VS","HR 102 · BP 158/90 · T 36.8 °C"],
+     ["0451","History","Inguinal hernia repair yesterday afternoon."],
+     ["0452","I&O","Intake 2,100 mL since surgery. No recorded output."],
+     ["0452","Patient","“I keep feeling like I need to go, but only a dribble comes out.”"],
+     ["0455","History","Enlarged prostate (BPH). Tamsulosin held the day of surgery."],
+     ["0456","History","Spinal anesthesia used for the procedure."],
+     ["0457","MAR","Diphenhydramine 25 mg at 2200 for sleep. Oxycodone 5 mg twice overnight."],
+     ["0458","Assess","Firm, rounded mass above the pubic bone. Dull to percussion."],
+     ["0459","Assess","Bladder scan: 850 mL."]],
+  p:{q:"What do you do first?",
+     o:["Get an order and straight-catheterize to drain the bladder","Speed up the IV fluids to help him void","Give another opioid dose for the belly pain","Restrict fluids and recheck in 8 hours"],
+     why:"The bladder is overdistended and needs to be drained. Most facilities let nurses get a catheter order by protocol. More fluid or opioids make it worse, and waiting risks bladder damage and delirium."},
+  l:["Most post-op patients should void within 6–8 hours. Bladder-scan anyone who hasn’t.","Anticholinergics, opioids, spinal anesthesia and BPH all raise the risk of retention.","In older adults, retention can show up as agitation or delirium."]},
+
+{ a:["siadh","hypona"], cl:["di","seizure"], label:"SIADH with hyponatremia", pt:{n:"Victor Santos",age:67,sex:"M",rm:"ON-04",unit:"Oncology",al:"NKDA",code:"Full code",fall:true},
+  sum:"His lung tumor is releasing ADH, so he holds on to water and makes small amounts of concentrated urine. The extra water has diluted his sodium to 118, and his brain is starting to swell.",
+  c:[["0915","Family","Wife: “He’s been confused and cranky since yesterday.”"],
+     ["0915","Patient","“I have a headache and I feel sick to my stomach.”"],
+     ["0916","VS","HR 78 · BP 132/80 · T 36.8 °C. Weight up 2 kg in 3 days."],
+     ["0916","Assess","No edema. Lungs clear."],
+     ["0917","I&O","Last 24 h: output 600 mL of dark, concentrated urine. Intake 2,400 mL."],
+     ["0917","Assess","Muscle cramps and twitching."],
+     ["0920","History","Small cell lung cancer."],
+     ["0921","Lab","Urine specific gravity 1.032."],
+     ["0922","Lab","Serum osmolality 258 mOsm/kg (low)."],
+     ["0923","Family","Wife: “The clinic told him to stay hydrated, so he’s been drinking all day.”"],
+     ["0925","Lab","Sodium 118 mEq/L."]],
+  p:{q:"What do you do first?",
+     o:["Start seizure precautions, restrict fluids as ordered, and report the sodium","Encourage at least 3 L of fluid a day","Hang 0.45% saline","Push him to eat more to boost his sodium"],
+     why:"At 118 his brain is at risk of seizures. Fluid restriction treats the cause. Hypotonic fluid lowers sodium further. If hypertonic saline is ordered, the correction must be slow, because raising sodium too fast can cause permanent brain damage (osmotic demyelination)."},
+  l:["SIADH: small, concentrated urine; low serum sodium and osmolality; weight gain without edema.","Small cell lung cancer, head injury, and drugs like SSRIs and carbamazepine are common causes.","Correct sodium slowly. Usual limits are about 8–10 mEq/L in 24 hours."]},
+
+{ a:["cdiff"], cl:["dehydration","sepsis"], pt:{n:"Lorraine Mills",age:79,sex:"F",rm:"3E-09",unit:"Med-Surg",al:"Erythromycin",code:"Full code",fall:true},
+  sum:"A recent course of clindamycin wiped out her normal gut bacteria, and a daily PPI added to the risk. C. difficile has taken over, causing frequent watery stools, fever and a high WBC.",
+  c:[["1000","Patient","“I keep having to rush to the bathroom.”"],
+     ["1000","I&O","6 liquid stools since midnight."],
+     ["1001","Assess","Cramping pain in the lower abdomen. Tender to touch."],
+     ["1001","VS","T 38.1 °C · HR 102 · BP 118/70"],
+     ["1002","Assess","Dry mucous membranes."],
+     ["1002","History","Admitted from an assisted living facility."],
+     ["1005","History","Just finished 10 days of clindamycin for a dental abscess."],
+     ["1006","MAR","Pantoprazole 40 mg PO daily."],
+     ["1007","Assess","Stool watery with a strong, distinctive odor."],
+     ["1015","Lab","WBC 17.6 ×10³/µL."],
+     ["1100","Lab","Stool C. difficile toxin: positive."]],
+  p:{q:"What do you do first?",
+     o:["Start contact precautions and clean your hands with soap and water, not alcohol gel","Give loperamide to slow the diarrhea","Use alcohol hand rub after leaving the room","Send a formed stool sample to confirm"],
+     why:"C. diff spores survive alcohol rub, so wash with soap and water and use bleach-based cleaning. Gown and gloves for every contact. Antidiarrheals can trap the toxin and lead to toxic megacolon. Only liquid stool is tested."},
+  l:["Risk factors: antibiotics (clindamycin, fluoroquinolones, cephalosporins), PPIs, older age, healthcare exposure.","Replace fluids and electrolytes, since the losses add up fast in older adults.","Use dedicated equipment like a stethoscope and BP cuff that stays in the room."]},
+
+{ a:["he"], cl:["delirium","etoh"], pt:{n:"Ethan Wells",age:58,sex:"M",rm:"GI-06",unit:"Med-Surg",al:"NKDA",code:"Full code",fall:true},
+  sum:"His cirrhotic liver can’t clear ammonia from the gut. Constipation and refused lactulose let it build up, causing confusion, a flipped sleep cycle and asterixis.",
+  c:[["2130","Family","Sister: “He sleeps all day and is up all night.”"],
+     ["2130","Assess","Confused. Slow to answer."],
+     ["2131","Assess","Whites of the eyes are yellow."],
+     ["2131","Assess","Abdomen distended, with a fluid wave."],
+     ["2132","VS","HR 92 · BP 108/64 · T 37.0 °C"],
+     ["2132","I&O","No bowel movement in 4 days."],
+     ["2135","History","Alcohol-related cirrhosis. Sober for 2 years."],
+     ["2136","MAR","Lactulose refused for the last 3 doses: “Too many trips to the bathroom.”"],
+     ["2137","Assess","Musty, sweet odor on his breath."],
+     ["2138","Assess","His hands flap when he holds his arms out with wrists bent back."],
+     ["2145","Lab","Ammonia 142 µmol/L."]],
+  p:{q:"What do you do first?",
+     o:["Give the lactulose as ordered, aiming for 2–3 soft stools a day, and keep him safe from falls","Give PRN lorazepam to help him sleep at night","Hold lactulose because he’s had loose stools before","Restrict all protein from his diet"],
+     why:"Lactulose traps ammonia in the gut and moves it out in stool. Explain why it matters when he refuses. Sedatives can tip him into coma. Strict protein restriction is no longer recommended because it worsens malnutrition."},
+  l:["Watch for triggers: GI bleeding, infection, constipation, sedatives, low potassium, dehydration.","Asterixis (flapping tremor) and a flipped sleep–wake cycle are classic signs.","Rifaximin is often added to lactulose to prevent relapse."]},
+
+{ a:["mh"], cl:["nms","serotonin"], pt:{n:"Samir Haddad",age:22,sex:"M",rm:"PACU-3",unit:"PACU",al:"NKDA",code:"Full code",fall:false},
+  sum:"Sevoflurane and succinylcholine triggered an inherited muscle reaction. Muscles go rigid, CO₂ and temperature climb fast, and breaking muscle releases potassium and CK. His uncle’s near-death at surgery was a clue.",
+  c:[["1245","VS","HR 132 · BP 150/90"],
+     ["1245","Assess","Jaw muscles rigid."],
+     ["1246","Assess","Skin hot and mottled."],
+     ["1246","History","In PACU after a laparoscopic appendectomy. Extubated 15 minutes ago."],
+     ["1247","VS","RR 32"],
+     ["1247","Assess","Generalized muscle stiffness."],
+     ["1249","Monitor","EtCO₂ 68 mmHg. It was 38."],
+     ["1250","VS","T 39.4 °C and climbing about 1 °C every 10 minutes."],
+     ["1251","History","Anesthesia: sevoflurane and succinylcholine."],
+     ["1252","Family","Mother: “His uncle almost died during a surgery once. Something about a fever.”"],
+     ["1258","Lab","K⁺ 6.4 mEq/L · CK 12,000 U/L. Urine cola-colored."]],
+  p:{q:"What do you do first?",
+     o:["Call for help and the MH cart, give dantrolene as ordered, and start active cooling","Give acetaminophen and use a cooling blanket only","Give more succinylcholine to relax the jaw","Recheck his temperature in 30 minutes"],
+     why:"Dantrolene is the only specific treatment. It stops the runaway calcium release inside muscle. Cool him, treat the high potassium, and protect his kidneys from muscle breakdown products. Acetaminophen doesn’t work on this kind of fever."},
+  l:["Malignant hyperthermia is inherited. Ask about family members who had problems with anesthesia.","A rise in EtCO₂ is often the earliest sign. Fever can come later.","Every area that uses triggering agents must keep an MH cart stocked and ready."]},
+
+{ a:["extravasation"], cl:["phlebitis"], pt:{n:"Beatrice Lowe",age:78,sex:"F",rm:"2S-09",unit:"Step-down",al:"Shellfish",code:"Full code",fall:true},
+  sum:"Norepinephrine, a vasopressor that damages tissue if it leaks, is running through a day-old peripheral IV. It is leaking into her forearm, clamping down blood vessels and starting to injure the tissue. Her BP is also falling because the drug isn’t reaching the vein.",
+  c:[["0110","Patient","“My arm burns.”"],
+     ["0110","Assess","Right forearm cool to the touch around the IV site."],
+     ["0111","Assess","Skin around the site pale and swollen."],
+     ["0111","VS","BP 92/58 (MAP 69), drifting down over the last hour despite no order changes."],
+     ["0112","History","Admitted to step-down with septic shock."],
+     ["0112","Lines","20-gauge IV in the right forearm, placed yesterday."],
+     ["0114","MAR","Norepinephrine running through this peripheral IV while a central line is pending."],
+     ["0115","Lines","No blood return when you aspirate."],
+     ["0116","Assess","Swelling spreads 6 cm from the insertion site. Skin tight and shiny."],
+     ["0117","Assess","Area turning blotchy and dusky."],
+     ["0118","Note","Facility policy lists norepinephrine as a vesicant needing hourly site checks. Last site check documented at 2200."]],
+  p:{q:"What do you do first?",
+     o:["Stop the infusion, aspirate through the catheter, leave it in place for the antidote, and notify the provider","Flush the IV with saline to clear it","Pull the catheter out right away and apply ice","Speed up the infusion to get her MAP back up"],
+     why:"Stop the infusion and draw back what you can. Leave the catheter in so phentolamine, the antidote, can be given. Avoid cold packs with vasopressors because they tighten vessels further. Restart the pressor through a new line right away, because her BP is falling."},
+  l:["Vesicants need a large, reliable vein, a central line when possible, and frequent site checks.","Signs of infiltration: coolness, pallor, swelling, pain, no blood return.","Mark the edges, photograph the site, and document the size and any treatment."]}
+];
+
+/* ---------- utilities ---------- */
+const $ = s => document.querySelector(s);
+const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+const MAX = 6, OPEN = 6;
+function rng(seed){ return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function shuffled(arr, seed){ const r = rng(seed), a = arr.slice(); for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+const ORDER = shuffled(CASES.map((_, i) => i), 20261104);
+const EPOCH = new Date(2026, 10, 4);
+function dayIndex(){ const n = new Date(); const a = new Date(n.getFullYear(), n.getMonth(), n.getDate()); return Math.max(0, Math.round((a - EPOCH) / 864e5)); }
+
+const KEY = "handoff.v1";
+function load(){ try { const v = localStorage.getItem(KEY); if (v) return JSON.parse(v); } catch(e){} return null; }
+let store = load() || {};
+store.days = store.days || {};
+store.stats = store.stats || {played:0, wins:0, streak:0, best:0, dist:[0,0,0,0,0,0,0], prio:0, prioN:0, last:-1};
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(store)); } catch(e){} }
+
+/* ---------- state ---------- */
+let mode = "daily";
+let today = dayIndex();
+let daily, practice;
+function freshGame(idx){ return {idx, guesses:[], status:"playing", pick:null, counted:false}; }
+function cur(){ return mode === "daily" ? daily : practice; }
+function caseOf(g){ return CASES[g.idx]; }
+function pickPractice(exclude){ const pool = CASES.map((_, i) => i).filter(i => i !== exclude && i !== daily.idx); return pool[Math.floor(Math.random() * pool.length)]; }
+
+function verdict(cs, id){
+  if (id === null) return "skip";
+  if (cs.a.includes(id)) return "ok";
+  if ((cs.cl || []).includes(id)) return "close";
+  if (DX[id].sys === DX[cs.a[0]].sys) return "sys";
+  return "miss";
+}
+const VLABEL = {ok:"Correct", close:"Close", sys:"Same system", miss:"Miss", skip:"Skipped"};
+
+/* ---------- actions ---------- */
+let freshIndex = -1;
+function call(id){
+  const g = cur(); if (g.status !== "playing") return;
+  if (id !== null && g.guesses.some(x => x.id === id)) return;
+  const v = verdict(caseOf(g), id);
+  g.guesses.push({id, v});
+  const misses = g.guesses.filter(x => x.v !== "ok").length;
+  if (v === "ok") g.status = "won";
+  else if (g.guesses.length >= MAX) g.status = "lost";
+  else freshIndex = OPEN + misses - 1;
+  if (mode === "daily"){ store.days[today] = daily; recordDaily(); save(); }
+  clearInput();
+  render(true);
+}
+function recordDaily(){
+  const g = daily; if (g.status === "playing" || g.counted) return;
+  const s = store.stats; s.played++;
+  if (g.status === "won"){ s.wins++; s.streak = (s.last === today - 1 || s.played === 1) ? s.streak + 1 : 1; s.best = Math.max(s.best, s.streak); s.dist[g.guesses.length - 1]++; }
+  else { s.streak = 0; s.dist[6]++; }
+  s.last = today; g.counted = true;
+}
+function choose(i){
+  const g = cur(); if (g.pick !== null) return;
+  g.pick = i;
+  if (mode === "daily"){ store.stats.prioN++; if (i === 0) store.stats.prio++; store.days[today] = daily; save(); }
+  renderResult();
+}
+
+/* ---------- rendering ---------- */
+function renderBand(cs){
+  const b = $("#band"); b.textContent = "";
+  const p = cs.pt;
+  const strap = el("div", "strap");
+  strap.append(el("span", "snap"));
+  const who = el("div", "who");
+  who.append(el("b", null, p.n));
+  who.append(el("span", null, `${p.age} ${p.sex} · Rm ${p.rm} · ${p.unit}`));
+  strap.append(who, el("span", "barcode"));
+  const alerts = el("div", "alerts");
+  if (p.al === "NKDA") alerts.append(el("span", "alert nkda", "NKDA"));
+  else alerts.append(el("span", "alert allergy", "Allergy: " + p.al));
+  if (p.fall) alerts.append(el("span", "alert fall", "Fall risk"));
+  if (p.code === "DNR") alerts.append(el("span", "alert dnr", "DNR"));
+  b.append(strap, alerts);
+}
+
+function clueRow(c, cls){
+  const li = el("li", "row" + (cls ? " " + cls : ""));
+  const m = el("div", "meta"); m.append(el("span", "time", c[0]), el("span", "tag", c[1]));
+  const t = el("div", "txt"); t.append(el("span", null, c[2]));
+  li.append(m, t); return li;
+}
+
+function renderChart(scroll){
+  const g = cur(), cs = caseOf(g), ol = $("#chart"); ol.textContent = "";
+  const ended = g.status !== "playing";
+  let shown = OPEN;
+  for (let i = 0; i < OPEN; i++) ol.append(clueRow(cs.c[i]));
+  let missN = 0, freshEl = null;
+  g.guesses.forEach((x, i) => {
+    const li = el("li", "row call v-" + x.v);
+    const m = el("div", "meta"); m.append(el("span", "time", "Call " + (i + 1)), el("span", "tag", "You"));
+    const t = el("div", "txt call-line");
+    t.append(el("span", "call-name", x.id === null ? "Skipped" : DX[x.id].name));
+    const chip = el("span", "chip " + x.v, x.v === "sys" ? "Same system · " + SYS[DX[x.id].sys] : VLABEL[x.v]);
+    if (x.v !== "skip") t.append(chip);
+    li.append(m, t); ol.append(li);
+    if (x.v !== "ok"){
+      missN++;
+      const ci = OPEN + missN - 1;
+      if (ci < cs.c.length){
+        const r = clueRow(cs.c[ci], ci === freshIndex ? "fresh" : "");
+        if (ci === freshIndex) freshEl = r;
+        ol.append(r); shown++;
+      }
+    }
+  });
+  const remaining = cs.c.length - shown;
+  if (remaining > 0){
+    if (ended){
+      const d = el("li", "divider", "Rest of the chart"); ol.append(d);
+      for (let i = shown; i < cs.c.length; i++) ol.append(clueRow(cs.c[i], "after"));
+    } else {
+      for (let i = 0; i < remaining; i++){
+        const li = el("li", "row locked");
+        const m = el("div", "meta"); m.append(el("span", "time", "––:––"), el("span", "tag", "Locked"));
+        li.append(m, el("div", "txt", i === 0 ? "Opens after your next wrong call" : "Locked entry"));
+        ol.append(li);
+      }
+    }
+  }
+  $("#sheetTitle").textContent = `Nursing notes · ${cs.pt.unit}`;
+  $("#sheetCount").textContent = ended ? `${cs.c.length} entries` : `${shown} of ${cs.c.length} open`;
+  if (scroll && freshEl){
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    freshEl.scrollIntoView({block:"center", behavior: reduce ? "auto" : "smooth"});
+  }
+  freshIndex = -1;
+}
+
+function renderDock(){
+  const g = cur(), playing = g.status === "playing";
+  $("#dock").hidden = !playing;
+  if (!playing) return;
+  const n = g.guesses.length;
+  $("#callCount").textContent = `Call ${n + 1} of ${MAX}`;
+  const pips = $("#pips"); pips.textContent = "";
+  for (let i = 0; i < MAX; i++){ const p = el("span", "pip"); if (g.guesses[i]) p.classList.add(g.guesses[i].v); else if (i === n) p.classList.add("next"); pips.append(p); }
+  const last = g.guesses[n - 1];
+  $("#dockHint").textContent = !last ? "Start typing, then pick from the list." :
+    last.v === "close" ? "Close. A related problem, so look for what sets this one apart." :
+    last.v === "sys" ? `Right system (${SYS[DX[last.id].sys]}). Narrow it down.` :
+    last.v === "skip" ? "New entry opened. Make your call when ready." :
+    "New entry opened. Check the latest note.";
+  $("#skipBtn").textContent = n === MAX - 1 ? "Give up and see the answer" : "Skip and open next entry";
+}
+
+function renderResult(){
+  const g = cur(), cs = caseOf(g), box = $("#result");
+  box.hidden = g.status === "playing";
+  if (box.hidden) return;
+  const won = g.status === "won";
+  $("#verdictCard").className = "card " + (won ? "won" : "lost");
+  $("#verdictEyebrow").textContent = won ? `Solved in ${g.guesses.length} ${g.guesses.length === 1 ? "call" : "calls"}` : "Out of calls · The answer was";
+  $("#answerName").textContent = cs.label || DX[cs.a[0]].name;
+  $("#answerSum").textContent = cs.sum;
+  $("#prioQ").textContent = cs.p.q;
+  const opts = $("#prioOpts"); opts.textContent = "";
+  const order = shuffled([0,1,2,3], g.idx * 97 + 13);
+  order.forEach((oi, pos) => {
+    const b = el("button", "opt"); b.type = "button";
+    b.append(el("span", "k", "ABCD"[pos]), el("span", null, cs.p.o[oi]));
+    if (g.pick !== null){
+      b.disabled = true;
+      if (oi === 0) b.classList.add("right");
+      else if (oi === g.pick) b.classList.add("wrong");
+      else b.classList.add("dim");
+    } else b.addEventListener("click", () => choose(oi));
+    opts.append(b);
+  });
+  const why = $("#prioWhy");
+  if (g.pick !== null){
+    why.hidden = false; why.className = "rationale" + (g.pick === 0 ? "" : " miss");
+    why.textContent = "";
+    why.append(el("b", null, g.pick === 0 ? "Right first move. " : "Not first. "), document.createTextNode(cs.p.why));
+    const ul = $("#pearls"); ul.textContent = ""; cs.l.forEach(t => ul.append(el("li", null, t)));
+    $("#pearlsCard").hidden = false;
+    $("#actions").hidden = false;
+  } else {
+    why.hidden = true; $("#pearlsCard").hidden = true; $("#actions").hidden = true;
+  }
+  $("#nextBtn").textContent = mode === "daily" ? "Play a practice case" : "Next practice case";
+  $("#copied").hidden = true; $("#shareFallback").hidden = true;
+  tick();
+}
+
+function render(scroll){
+  const g = cur(), cs = caseOf(g);
+  $("#modeDaily").setAttribute("aria-selected", mode === "daily");
+  $("#modePractice").setAttribute("aria-selected", mode === "practice");
+  $("#caseLabel").textContent = mode === "daily" ? `Case #${today + 1} · Today` : `Practice · ${cs.pt.unit}`;
+  renderBand(cs);
+  renderChart(scroll);
+  renderDock();
+  const wasHidden = $("#result").hidden;
+  renderResult();
+  if (scroll && wasHidden && !$("#result").hidden) $("#result").scrollIntoView({block:"start", behavior:"smooth"});
+}
+
+/* ---------- countdown ---------- */
+function tick(){
+  const c = $("#countdown");
+  if (mode !== "daily" || cur().status === "playing"){ c.textContent = ""; return; }
+  const n = new Date(), next = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1);
+  const m = Math.max(0, Math.round((next - n) / 60000));
+  c.textContent = `Next daily case in ${Math.floor(m / 60)}h ${m % 60}m`;
+}
+setInterval(() => {
+  if (dayIndex() !== today){ today = dayIndex(); daily = store.days[today] || freshGame(ORDER[today % ORDER.length]); if (mode === "daily") render(false); }
+  tick();
+}, 30000);
+
+/* ---------- combobox ---------- */
+const input = $("#guessInput"), list = $("#suggest"), callBtn = $("#callBtn");
+let matches = [], active = -1, chosen = null;
+function search(q){
+  q = q.trim().toLowerCase(); if (!q) return [];
+  const res = [];
+  for (const d of DXL){
+    let best = 99;
+    for (const n of [d.name, ...d.alias]){
+      const s = n.toLowerCase(), i = s.indexOf(q); if (i < 0) continue;
+      const sc = i === 0 ? 0 : /[\s\-(\/]/.test(s[i - 1]) ? 1 : 2;
+      if (sc < best) best = sc;
+    }
+    if (best < 99) res.push([best, d]);
+  }
+  res.sort((a, b) => a[0] - b[0] || a[1].name.localeCompare(b[1].name));
+  return res.slice(0, 8).map(r => r[1]);
+}
+function used(id){ return cur().guesses.some(x => x.id === id); }
+function openList(){
+  matches = search(input.value);
+  list.textContent = "";
+  if (!input.value.trim()){ closeList(); return; }
+  if (!matches.length){ const li = el("li", "none", "No match. Try another name for it."); list.append(li); }
+  matches.forEach((d, i) => {
+    const li = el("li"); li.id = "opt-" + i; li.setAttribute("role", "option");
+    if (used(d.id)){ li.classList.add("used"); li.setAttribute("aria-disabled", "true"); }
+    li.setAttribute("aria-selected", i === active);
+    li.append(el("span", null, d.name), el("span", "sys-name", SYS[d.sys]));
+    li.addEventListener("mousedown", e => { e.preventDefault(); if (!used(d.id)) pick(d); });
+    list.append(li);
+  });
+  list.hidden = false; input.setAttribute("aria-expanded", "true");
+  input.setAttribute("aria-activedescendant", active >= 0 ? "opt-" + active : "");
+}
+function closeList(){ list.hidden = true; input.setAttribute("aria-expanded", "false"); active = -1; }
+function pick(d){ chosen = d; input.value = d.name; callBtn.disabled = false; closeList(); input.focus(); }
+function clearInput(){ input.value = ""; chosen = null; callBtn.disabled = true; closeList(); }
+input.addEventListener("input", () => {
+  const exact = DXL.find(d => d.name.toLowerCase() === input.value.trim().toLowerCase());
+  chosen = exact && !used(exact.id) ? exact : null; callBtn.disabled = !chosen; active = -1; openList();
+});
+input.addEventListener("keydown", e => {
+  if (list.hidden && (e.key === "ArrowDown" || e.key === "ArrowUp")){ openList(); }
+  if (e.key === "ArrowDown"){ e.preventDefault(); if (matches.length){ active = (active + 1) % matches.length; openList(); } }
+  else if (e.key === "ArrowUp"){ e.preventDefault(); if (matches.length){ active = (active - 1 + matches.length) % matches.length; openList(); } }
+  else if (e.key === "Enter"){
+    if (!list.hidden && active >= 0 && matches[active] && !used(matches[active].id)){ e.preventDefault(); pick(matches[active]); }
+    else if (!chosen && !list.hidden && matches.length){ const first = matches.find(d => !used(d.id)); if (first){ e.preventDefault(); pick(first); } }
+  }
+  else if (e.key === "Escape"){ closeList(); }
+});
+input.addEventListener("blur", () => setTimeout(closeList, 120));
+$("#guessForm").addEventListener("submit", e => { e.preventDefault(); if (chosen) call(chosen.id); });
+$("#skipBtn").addEventListener("click", () => call(null));
+
+/* ---------- mode, share, modals ---------- */
+function setMode(m){ mode = m; clearInput(); render(false); window.scrollTo({top:0}); }
+$("#modeDaily").addEventListener("click", () => setMode("daily"));
+$("#modePractice").addEventListener("click", () => setMode("practice"));
+$("#nextBtn").addEventListener("click", () => {
+  practice = freshGame(pickPractice(mode === "practice" ? practice.idx : -1));
+  setMode("practice");
+});
+
+const SQ = {ok:"🟩", close:"🟨", sys:"🟦", miss:"⬛", skip:"⬜"};
+function shareText(){
+  const g = cur();
+  const head = mode === "daily" ? `Handoff #${today + 1}` : "Handoff practice";
+  const score = g.status === "won" ? `${g.guesses.length}/${MAX}` : `X/${MAX}`;
+  const row = g.guesses.map(x => SQ[x.v]).join("");
+  const prio = g.pick === null ? "" : `\nFirst move: ${g.pick === 0 ? "✅" : "❌"}`;
+  return `${head} · ${score}\n${row}${prio}`;
+}
+$("#shareBtn").addEventListener("click", () => {
+  const t = shareText(), fb = $("#shareFallback");
+  const showFallback = () => { fb.value = t; fb.hidden = false; fb.focus(); fb.select(); };
+  try {
+    navigator.clipboard.writeText(t).then(() => { $("#copied").hidden = false; fb.hidden = true; }, showFallback);
+  } catch(e){ showFallback(); }
+});
+
+function openModal(id){ $(id).hidden = false; $(id).querySelector("[data-close]").focus(); }
+document.querySelectorAll(".overlay").forEach(o => {
+  o.addEventListener("click", e => { if (e.target === o || e.target.closest("[data-close]")) o.hidden = true; });
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") document.querySelectorAll(".overlay").forEach(o => o.hidden = true); });
+$("#helpBtn").addEventListener("click", () => openModal("#helpModal"));
+$("#statsBtn").addEventListener("click", () => { renderStats(); openModal("#statsModal"); });
+function renderStats(){
+  const s = store.stats, grid = $("#statGrid"); grid.textContent = "";
+  [[s.played, "Played"], [s.played ? Math.round(100 * s.wins / s.played) + "%" : "–", "Solved"], [s.streak, "Streak"], [s.best, "Best streak"]]
+    .forEach(([v, l]) => { const d = el("div"); d.append(el("b", null, String(v)), el("span", null, l)); grid.append(d); });
+  const dist = $("#dist"); dist.textContent = "";
+  const max = Math.max(1, ...s.dist);
+  const g = daily, hot = g.status === "won" ? g.guesses.length - 1 : g.status === "lost" ? 6 : -1;
+  s.dist.forEach((n, i) => {
+    const r = el("div", "dist-row"); r.append(el("span", null, i === 6 ? "X" : String(i + 1)));
+    const bar = el("div", "dist-bar" + (i === hot ? " hot" : ""), String(n)); bar.style.width = Math.max(8, 100 * n / max) + "%";
+    r.append(bar); dist.append(r);
+  });
+  $("#prioStat").textContent = s.prioN ? `First-move accuracy: ${s.prio} of ${s.prioN} (${Math.round(100 * s.prio / s.prioN)}%)` : "Your first-move accuracy shows up here after your first daily case.";
+}
+
+/* ---------- boot ---------- */
+function start(data){
+  daily = store.days[today] || freshGame(ORDER[today % ORDER.length]);
+  practice = (data && data.practice) || freshGame(pickPractice(-1));
+  mode = (data && data.mode) || "daily";
+  render(false);
+  let seen = false; try { seen = localStorage.getItem(KEY + ".seen") === "1"; localStorage.setItem(KEY + ".seen", "1"); } catch(e){ seen = true; }
+  if (!seen) openModal("#helpModal");
+}
+window.claude?.hot?.snapshot?.(() => ({mode, practice}));
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+})();
+</script>
+</body>
+</html>
